@@ -1,0 +1,58 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container mt-5">
+    <h2 class="text-center">Результаты игр</h2>
+    <p class="text-center">Здесь отображаются все ваши результаты в играх.</p>
+
+    <div class="row mt-4">
+        {% if game_results %}
+            {% for result in game_results %}
+                <div class="col-md-6 mb-4">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5>{{ result.game_name }}</h5>
+                            <p class="text-muted">Дата: {{ result.date|date:"d.m.Y H:i" }}</p>
+                        </div>
+                        <div class="card-body">
+                            {% if result.game_type == 'painting' %}
+                                <h6>Ваш рисунок:</h6>
+                                <img src="{{ result.result_image_url }}" class="img-fluid" alt="Результат игры">
+                            {% elif result.game_type == 'choice' %}
+                                <h6>Ваши выбранные картинки:</h6>
+                                <div class="row">
+                                    {% for image_url in result.selected_images %}
+                                        <div class="col-4">
+                                            <img src="{{ image_url }}" class="img-fluid" alt="Выбранная картинка">
+                                        </div>
+                                    {% endfor %}
+                                </div>
+                            {% elif result.game_type == 'dialog' %}
+                                <h6>Ваши выбранные фразы:</h6>
+                                <ul>
+                                    {% for phrase in result.selected_phrases %}
+                                        <li>{{ phrase }}</li>
+                                    {% endfor %}
+                                </ul>
+                            {% endif %}
+                        </div>
+                        <div class="card-footer">
+                            <h6>Полученные эмоции:</h6>
+                            <ul>
+                                <li>Радость: {{ result.emotions.joy }}</li>
+                                <li>Грусть: {{ result.emotions.sadness }}</li>
+                                <li>Злость: {{ result.emotions.anger }}</li>
+                                <li>Любовь: {{ result.emotions.love }}</li>
+                                <li>Скука: {{ result.emotions.boredom }}</li>
+                                <li>Интерес: {{ result.emotions.interest }}</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            {% endfor %}
+        {% else %}
+            <p class="text-center">Нет сохранённых результатов игр.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

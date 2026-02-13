@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% load static %}
+{% block content %}
+
+<style>
+    .image-selection {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-around;
+    }
+
+    .image-item {
+        margin: 10px;
+    }
+
+    .image-choice {
+        width: 100px;
+        height: auto;
+        cursor: pointer;
+    }
+</style>
+
+<h1>Выберите картинки</h1>
+
+<!-- Форма для выбора картинок -->
+<form method="post" class='form1'>
+    {% csrf_token %}
+
+    <div class="round">
+        <h2>Раунд 1</h2>
+        <div class="image-selection">
+            {% for image in round_1_images %}
+                <div class="image-item">
+                    <input type="radio" id="image_{{ forloop.counter }}" name="round_1" value="{{ image }}">
+                    <label for="image_{{ forloop.counter }}">
+                        <img src="{% static 'images/'|add:image %}" class="image-choice" alt="Раунд 1, изображение {{ forloop.counter }}">
+                    </label>
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="round">
+        <h2>Раунд 2</h2>
+        <div class="image-selection">
+            {% for image in round_2_images %}
+                <div class="image-item">
+                    <input type="radio" id="image_{{ forloop.counter }}" name="round_2" value="{{ image }}">
+                    <label for="image_{{ forloop.counter }}">
+                        <img src="{% static 'images/'|add:image %}" class="image-choice" alt="Раунд 2, изображение {{ forloop.counter }}">
+                    </label>
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="round">
+        <h2>Раунд 3</h2>
+        <div class="image-selection">
+            {% for image in round_3_images %}
+                <div class="image-item">
+                    <input type="radio" id="image_{{ forloop.counter }}" name="round_3" value="{{ image }}">
+                    <label for="image_{{ forloop.counter }}">
+                        <img src="{% static 'images/'|add:image %}" class="image-choice" alt="Раунд 3, изображение {{ forloop.counter }}">
+                    </label>
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <button type="submit">Сохранить выбор</button>
+</form>
+
+<script>
+    // Делаем картинку темнее при нажатии
+    document.querySelectorAll('.image-choice').forEach(function(img) {
+        img.addEventListener('click', function() {
+            // Снимаем эффект с других изображений
+            document.querySelectorAll('.image-choice').forEach(function(img) {
+                img.style.filter = 'brightness(100%)';
+            });
+            // Делаем выбранное изображение темнее
+            this.style.filter = 'brightness(50%)';
+        });
+    });
+</script>
+
+{% endblock %}

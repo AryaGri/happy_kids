@@ -1,0 +1,50 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container">
+    <h2 class="text-center">Информация о пользователе</h2>
+
+    <div class="row mt-4">
+        <div class="col-md-6 offset-md-3">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title text-center">Данные пользователя</h5>
+                </div>
+                <div class="card-body">
+                    <dl class="row">
+                        <dt class="col-sm-4">Имя пользователя:</dt>
+                        <dd class="col-sm-8">{{ user.username }}</dd>
+
+                        <dt class="col-sm-4">ФИО:</dt>
+                        <dd class="col-sm-8">{{ user.first_name }} {{ user.last_name }}</dd>
+
+                        <dt class="col-sm-4">Дата рождения:</dt>
+                        <dd class="col-sm-8">{{ user.profile.birth_date }}</dd>
+
+                        <dt class="col-sm-4">Роль:</dt>
+                        <dd class="col-sm-8">
+                            {% if user.is_staff %}
+                                Администратор
+                            {% elif user.profile.role == 'doctor' %}
+                                Врач
+                            {% elif user.profile.role == 'parent' %}
+                                Родитель
+                            {% elif user.profile.role == 'child' %}
+                                Ребёнок
+                            {% else %}
+                                Неизвестно
+                            {% endif %}
+                        </dd>
+
+                        <dt class="col-sm-4">Дата регистрации:</dt>
+                        <dd class="col-sm-8">{{ user.date_joined }}</dd>
+                    </dl>
+
+                    <a href="{% url 'edit_user' user.id %}" class="btn btn-primary btn-block">Редактировать</a>
+                    <a href="{% url 'user_list' %}" class="btn btn-secondary btn-block mt-2">Вернуться к списку пользователей</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

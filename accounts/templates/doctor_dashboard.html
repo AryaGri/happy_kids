@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container mt-5">
+    <form class='form1'>
+    <h2 class="text-center">Список пациентов</h2>
+
+    <div class="row mt-4">
+        {% for patient in patients %}
+        <div class="col-md-4 mb-4">
+            <div class="card">
+                <div class="card-body">
+                    <h3 class="card-title">{{ patient.name }}</h2>  <!-- Выводим ФИО ребёнка -->
+                    <p><b>Дата рождения:</b> {{ patient.date_of_b }}</p>  <!-- Дата рождения -->
+                    <a href="{% url 'patient_detail' patient.id %}" class="btn btn-primary">Просмотреть</a>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</form>
+</div>
+{% endblock %}

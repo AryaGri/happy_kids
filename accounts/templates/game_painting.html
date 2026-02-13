@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1>Игра: Раскраска</h1>
+
+<p>Выберите цвет и рисуйте на холсте!</p>
+
+<!-- Контейнер с холстом -->
+<canvas id="paintingCanvas" width="500" height="500" style="border: 1px solid #000;"></canvas>
+
+<div>
+    <!-- Кнопки для выбора цвета -->
+    <button type="button" class="color-button" data-emotion="anger" data-color="красная" style="background-color: red;">Красная</button>
+    <button type="button" class="color-button" data-emotion="joy" data-color="оранжевая" style="background-color: orange;">Оранжевая </button>
+    <button type="button" class="color-button" data-emotion="joy" data-color="жёлтая" style="background-color: yellow;">Жёлтая </button>
+    <button type="button" class="color-button" data-emotion="happiness" data-color="зелёная" style="background-color: green;">Зелёная </button>
+    <button type="button" class="color-button" data-emotion="sorrow" data-color="синяя" style="background-color: blue;">Синяя</button>
+    <button type="button" class="color-button" data-emotion="love" data-color="фиолетовая" style="background-color: purple;">Фиолетовая</button>
+</div>
+
+<form method="post" class='form1'>
+    {% csrf_token %}
+    
+    <!-- Скрытые поля для передачи баллов на сервер -->
+    <input type="hidden" name="anger" id="anger" value="0">
+    <input type="hidden" name="joy" id="joy" value="0">
+    <input type="hidden" name="sorrow" id="sorrow" value="0">
+    <input type="hidden" name="love" id="love" value="0">
+    <input type="hidden" name="boredom" id="boredom" value="0">
+    <input type="hidden" name="happiness" id="happiness" value="0">
+    <a href="{% url 'game_dashboard' user.id %}" class="btn btn-secondary mt-3">Назад к дашборду</a>
+  <br>
+</form>
+
+
+
+
+<script>
+// Инициализация холста
+const canvas = document.getElementById('paintingCanvas');
+const ctx = canvas.getContext('2d');
+let currentColor = 'black';  // По умолчанию черный цвет для рисования
+
+// Флаг для отслеживания рисования
+let painting = false;
+
+// Получаем положение канваса на странице
+const canvasRect = canvas.getBoundingClientRect();
+
+// Функция для начала рисования
+canvas.addEventListener('mousedown', (e) => {
+    painting = true;
+    draw(e); // Начинаем рисование сразу при клике
+});
+
+// Останавливаем рисование при отпускании кнопки мыши
+canvas.addEventListener('mouseup', () => {
+    painting = false;
+    ctx.beginPath(); // Заканчиваем рисование и начинаем новый путь
+});
+
+// Обработчик движения мыши
+canvas.addEventListener('mousemove', draw);
+
+// Функция рисования
+function draw(e) {
+    if (!painting) return;
+
+    // Получаем координаты мыши относительно канваса
+    const mouseX = e.clientX - canvasRect.left;
+    const mouseY = e.clientY - canvasRect.top;
+
+    // Устанавливаем стиль рисования
+    ctx.lineWidth = 5;  // Толщина линии
+    ctx.lineCap = 'round';  // Сглаженные углы линии
+    ctx.strokeStyle = currentColor;  // Цвет линии
+
+    // Рисуем линию
+    ctx.lineTo(mouseX, mouseY);
+    ctx.stroke();
+
+    // Перемещаем начало линии в текущую позицию мыши
+    ctx.beginPath();
+    ctx.moveTo(mouseX, mouseY);
+}
+
+// Обработка выбора цвета
+document.querySelectorAll('.color-button').forEach(button => {
+    button.addEventListener('click', function() {
+        const emotion = this.getAttribute('data-emotion');  // Эмоция, которая соответствует цвету
+        const color = this.getAttribute('data-color');     // Сам цвет
+
+        // Устанавливаем цвет для рисования
+        if (color === 'красная') {
+            currentColor = 'red';
+        } else if (color === 'оранжевая') {
+            currentColor = 'orange';
+        } else if (color === 'жёлтая') {
+            currentColor = 'yellow';
+        } else if (color === 'зелёная') {
+            currentColor = 'green';
+        } else if (color === 'синяя') {
+            currentColor = 'blue';
+        } else if (color === 'фиолетовая') {
+            currentColor = 'purple';
+        }
+
+        // Увеличиваем балл для выбранной эмоции
+        let currentValue = parseInt(document.getElementById(emotion).value) || 0;
+        document.getElementById(emotion).value = currentValue + 1;
+
+        // Выводим текущие значения баллов в консоль (для проверки)
+        console.log(`${emotion}: ${document.getElementById(emotion).value}`);
+    });
+});
+</script>
+
+{% endblock %}

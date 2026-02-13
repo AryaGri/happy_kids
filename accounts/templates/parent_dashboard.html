@@ -1,0 +1,26 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container mt-5">
+    <form>
+    <h2 class="text-center">Мои дети</h2>
+    {% csrf_token %}
+    <div class="row mt-4">
+        {% csrf_token %}
+        {% for child in children %}
+        <div class="col-md-4 mb-4">
+            <div class="card">
+                <div class="card-body">
+                    <h3 class="card-title">{{ child.name }}</h3>  
+                    <p><strong>Дата рождения:</strong> {{ child.date_of_b }}</p>  
+                    <a href="{% url 'child_detail' child.id %}" class="btn btn-primary">Просмотреть</a>
+                </div>
+            </div>
+        </div>
+        {% empty %}
+        <p>У вас нет детей в системе.</p>
+        {% endfor %}
+    </div>
+</form>
+</div>
+{% endblock %}

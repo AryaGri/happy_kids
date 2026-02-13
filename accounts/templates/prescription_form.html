@@ -1,0 +1,44 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container mt-5">
+    <h2 class="text-center">Создать новый рецепт</h2>
+    
+    <form method="post">
+        {% csrf_token %}
+        
+        <div class="form-group">
+            <label for="patient">Пациент:</label>
+            <select class="form-control" id="patient" name="patient" required>
+                {% for patient in patients %}
+                    <option value="{{ patient.id }}" {% if patient.id == selected_patient_id %}selected{% endif %}>
+                        {{ patient.full_name }}
+                    </option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="form-group mt-3">
+            <label for="medication">Лекарство:</label>
+            <input type="text" class="form-control" id="medication" name="medication" placeholder="Введите название лекарства" required>
+        </div>
+
+        <div class="form-group mt-3">
+            <label for="dosage">Дозировка:</label>
+            <input type="text" class="form-control" id="dosage" name="dosage" placeholder="Введите дозировку" required>
+        </div>
+
+        <div class="form-group mt-3">
+            <label for="instructions">Инструкция:</label>
+            <textarea class="form-control" id="instructions" name="instructions" rows="4" placeholder="Введите инструкции" required></textarea>
+        </div>
+
+        <div class="form-group mt-3">
+            <label for="date">Дата назначения:</label>
+            <input type="date" class="form-control" id="date" name="date" required>
+        </div>
+
+        <button type="submit" class="btn btn-primary mt-4">Создать рецепт</button>
+    </form>
+</div>
+{% endblock %}

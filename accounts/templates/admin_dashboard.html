@@ -1,0 +1,44 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container mt-5">                    
+                    <form  method="get" action="{% url 'admin_dashboard' %}">
+                        <h3>Фильтровать пользователей по роли</h3>
+                        <div class="form-group">
+                            <label for="role">Роль:</label>
+                            <select name="role" id="role" class="form-control">
+                                <option value="">Все</option>
+                                <option value="admin" {% if request.GET.role == 'admin' %}selected{% endif %}>Администратор</option>
+                                <option value="doctor" {% if request.GET.role == 'doctor' %}selected{% endif %}>Врач</option>
+                                <option value="parent" {% if request.GET.role == 'parent' %}selected{% endif %}>Родитель</option>
+                                <option value="child" {% if request.GET.role == 'child' %}selected{% endif %}>Ребёнок</option>
+                            </select>
+                        </div>
+                        <button type="submit" class="btn btn-primary mt-3">Применить фильтр</button>
+
+                    </form>
+                    <form class='form1'>
+                        <h3>Редактировать пользователей</h3>
+                        {% csrf_token %}
+                        {% for user in users %}
+                            <p>{{user.name|safe}}, {{user.get_role_display|safe}}</p>
+                            {% if user.role == 'child' %}
+                            <a href={% url 'edit_user' user.id %} class="btn btn-primary">Перейти</a>
+                            {% elif user.role == 'parent' %}
+                            <a href={% url 'edit_parent' user.id %} class="btn btn-primary">Перейти</a>
+                            {% elif user.role == 'doctor' %}
+                            <a href={% url 'edit_doctor' user.id %} class="btn btn-primary">Перейти</a>
+                            {% elif user.role == 'admin' %}
+                            <a href={% url 'edit_user' user.id %} class="btn btn-primary">Перейти</a>
+                            {% endif %}
+                            <br>
+                            <p> </p>
+                        {% endfor %}
+                        <br>                        
+                    </form>
+                    
+                    <a href="{% url 'register' %}">Создать нового пользователя</a>
+
+  
+</div>
+{% endblock %}
