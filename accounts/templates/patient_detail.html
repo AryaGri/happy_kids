@@ -1,160 +1,330 @@
 {% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Пациент — {{ patient.name }}{% endblock %}
 
 {% block content %}
-
-<style>
-    /* Контейнер для таблицы с flexbox для центрирования */
-    .table-container {
-        display: flex;
-        justify-content: center;  /* Центрирует таблицу по горизонтали */
-        align-items: center;      /* Центрирует таблицу по вертикали */
-        width: 100%;
-        margin-top: 20px;         /* Добавляем отступ сверху, если нужно */
-    }
-
-    .table {
-        width: 100%;               /* Можно регулировать ширину таблицы, если необходимо */
-        margin: 0 auto;           /* Для центрирования внутри контейнера */
-        font-size: 1.5rem;          /* Меньший размер шрифта для таблицы */
-    }
-</style>
-
-<form class='form1'>
-<div>
-    <h2 class="text-center">Детали пациента</h2>
-    <p class="text-center">Просмотрите информацию и результаты для этого пациента.</p>
-
-    <div class="card mb-4">
-        <div class="card-body">
-            <h4 class="card-title">Информация о пациенте</h4>
-            <p><strong>ФИО:</strong> {{ patient.name }}</p>
-            <p><strong>Дата рождения:</strong> {{ patient.date_of_b }}</p>
-            <p><strong>Эмоциональный статус:</strong></p>
-            <canvas id="emotionChart" width="100%" height="50"></canvas>
+<div class="patient-detail-container">
+    <!-- Заголовок и навигация -->
+    <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+        <div>
+            <a href="{% url 'doctor_dashboard' %}" class="text-decoration-none text-secondary mb-2 d-inline-block">
+                <i class="fas fa-arrow-left me-1"></i>К списку пациентов
+            </a>
+            <h2 class="mb-1">{{ patient.name }}</h2>
+            <p class="text-muted mb-0">Дата рождения: {{ patient.date_of_b|date:"d.m.Y" }}</p>
         </div>
+        <a href="{% url 'doctor_analysis' patient.id %}" class="btn btn-success" title="Анализ с использованием нечёткой логики">
+            <i class="fas fa-chart-line me-2"></i>Углублённый анализ (нечёткая логика)
+        </a>
     </div>
 
+    <!-- Радарная диаграмма -->
     <div class="card mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0"><i class="fas fa-chart-radar me-2"></i>Диагностический профиль</h5>
+        </div>
         <div class="card-body">
-            <h4 class="card-title">Результаты игр</h4>
-            <!-- Добавляем класс text-center для выравнивания таблицы -->
-            <div class="table-container">
-                <table class="table table-bordered">
-                    <thead>
-                        <tr>
-                            <th scope="col">Игра</th>
-                            <th scope="col">Дата</th>
-                            <th scope="col">Результат</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for game_result in game_results %}
-                        <tr>
-                            <td>{{ game_result.game_type }}</td>
-                            <td>{{ game_result.date|date:"Y-m-d" }}</td>
-                            <td>
-                                <p>Радость: {{ game_result.joy }} Грусть: {{ game_result.sorrow }}</p>
-                                <p>Любовь: {{ game_result.love }} Гнев: {{ game_result.anger }}</p>
-                                <p>Счастье: {{ game_result.happiness }} Скука: {{ game_result.boredom }}</p>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+            <div class="radar-chart-container" style="position: relative; height: 280px;">
+                <canvas id="radarChart"></canvas>
             </div>
         </div>
     </div>
 
+    <!-- Фильтр -->
     <div class="card mb-4">
-        <div class="card-body">
-            <h4 class="card-title">Рецепты</h4>
-            <div class="table-responsive text-center">
-                <table class="table table-bordered">
-                    <thead>
-                        <tr>
-                            <th scope="col">Дата</th>
-                            <th scope="col">Рецепт</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for prescription in prescriptions %}
-                        <tr>
-                            <td>{{ prescription.date_created|date:"Y-m-d" }}</td>
-                            <td>{{ prescription.text }}</td>
-                        </tr>
-                        {% empty %}
-                        <tr>
-                            <td colspan="2">Рецептов нет</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+        <div class="card-body py-3">
+            <form method="get" class="row g-3 align-items-end">
+                <div class="col-md-3">
+                    <label class="form-label">{{ filter_form.date_from.label }}</label>
+                    {{ filter_form.date_from }}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">{{ filter_form.date_to.label }}</label>
+                    {{ filter_form.date_to }}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">{{ filter_form.game_type.label }}</label>
+                    {{ filter_form.game_type }}
+                </div>
+                <div class="col-md-3">
+                    <button type="submit" class="btn btn-primary w-100">
+                        <i class="fas fa-filter me-1"></i>Применить
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Вкладки -->
+    <ul class="nav nav-tabs mb-3" id="patientTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link {% if not prescription_form.errors %}active{% endif %}" id="games-tab" data-bs-toggle="tab" data-bs-target="#games" type="button" role="tab">
+                <i class="fas fa-gamepad me-1"></i>Результаты игр
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link {% if prescription_form.errors %}active{% endif %}" id="prescriptions-tab" data-bs-toggle="tab" data-bs-target="#prescriptions" type="button" role="tab">
+                <i class="fas fa-pills me-1"></i>Назначения
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="analysis-tab" data-bs-toggle="tab" data-bs-target="#analysis" type="button" role="tab">
+                <i class="fas fa-brain me-1"></i>Анализ
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="profile-tab" data-bs-toggle="tab" data-bs-target="#profile" type="button" role="tab">
+                <i class="fas fa-user me-1"></i>Профиль
+            </button>
+        </li>
+    </ul>
+
+    <div class="tab-content" id="patientTabsContent">
+        <!-- Вкладка: Результаты игр -->
+        <div class="tab-pane fade {% if not prescription_form.errors %}show active{% endif %}" id="games" role="tabpanel">
+            <div class="card">
+                <div class="card-body">
+                    <div class="mb-3">
+                        <canvas id="emotionChart" height="100"></canvas>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-hover">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Игра</th>
+                                    <th>Дата</th>
+                                    <th>Результат</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for game_result in game_results %}
+                                <tr>
+                                    <td>{{ game_result.game_type }}</td>
+                                    <td>{{ game_result.date|date:"d.m.Y H:i" }}</td>
+                                    <td>
+                                        <small>
+                                            Радость: {{ game_result.joy }} Грусть: {{ game_result.sorrow }} |
+                                            Любовь: {{ game_result.love }} Гнев: {{ game_result.anger }} |
+                                            Счастье: {{ game_result.happiness }} Скука: {{ game_result.boredom }}
+                                        </small>
+                                    </td>
+                                </tr>
+                                {% empty %}
+                                <tr><td colspan="3" class="text-muted text-center">Нет результатов</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Вкладка: Назначения -->
+        <div class="tab-pane fade {% if prescription_form.errors %}show active{% endif %}" id="prescriptions" role="tabpanel">
+            <div class="card mb-4">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0">Добавить назначение</h5>
+                </div>
+                <div class="card-body">
+                    {% if prescription_form.non_field_errors %}
+                    <div class="alert alert-danger">{% for err in prescription_form.non_field_errors %}{{ err }}{% endfor %}</div>
+                    {% endif %}
+                    <form method="post">
+                        {% csrf_token %}
+                        <input type="hidden" name="prescription" value="1">
+                        <div class="mb-3">
+                            <label class="form-label">{{ prescription_form.prescription_type.label }}</label>
+                            {{ prescription_form.prescription_type }}
+                            {% if prescription_form.prescription_type.errors %}<div class="invalid-feedback d-block">{{ prescription_form.prescription_type.errors.0 }}</div>{% endif %}
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">{{ prescription_form.text.label }}</label>
+                            {{ prescription_form.text }}
+                            {% if prescription_form.text.errors %}<div class="invalid-feedback d-block">{{ prescription_form.text.errors.0 }}</div>{% endif %}
+                        </div>
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">{{ prescription_form.medication_name.label }}</label>
+                                {{ prescription_form.medication_name }}
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">{{ prescription_form.dosage.label }}</label>
+                                {{ prescription_form.dosage }}
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">{{ prescription_form.duration.label }}</label>
+                                {{ prescription_form.duration }}
+                            </div>
+                        </div>
+                        <div class="mb-3 form-check">
+                            {{ prescription_form.is_active }}
+                            <label class="form-check-label" for="{{ prescription_form.is_active.id_for_label }}">{{ prescription_form.is_active.label }}</label>
+                        </div>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-plus me-2"></i>Добавить назначение
+                        </button>
+                    </form>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">История назначений</h5>
+                    <div class="table-responsive">
+                        <table class="table table-bordered">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Дата</th>
+                                    <th>Тип</th>
+                                    <th>Текст</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for prescription in prescriptions %}
+                                <tr>
+                                    <td>{{ prescription.date_created|date:"d.m.Y" }}</td>
+                                    <td>{{ prescription.get_prescription_type_display }}</td>
+                                    <td>{{ prescription.text }}</td>
+                                </tr>
+                                {% empty %}
+                                <tr><td colspan="3" class="text-muted text-center">Назначений нет</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Вкладка: Анализ -->
+        <div class="tab-pane fade" id="analysis" role="tabpanel">
+            <div class="card mb-4">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0"><i class="fas fa-brain me-2"></i>Поведенческие паттерны</h5>
+                </div>
+                <div class="card-body">
+                    {% if behavior_analysis %}
+                    <div class="row">
+                        <div class="col-md-6">
+                            <p><strong>Доля ошибок:</strong> {{ behavior_analysis.error_rate|floatformat:2 }}</p>
+                            <p><strong>Всего ошибок:</strong> {{ behavior_analysis.total_mistakes }}</p>
+                            <p><strong>Паттерн:</strong> {{ behavior_analysis.pattern }}</p>
+                        </div>
+                        <div class="col-md-6">
+                            <p><strong>Классификация:</strong></p>
+                            <ul class="list-unstyled">
+                                {% for key, val in behavior_analysis.classification.items %}
+                                <li>{{ key }}: {{ val|floatformat:2 }}</li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                    </div>
+                    {% if behavior_analysis.error_types %}
+                    <p class="mt-2"><strong>Типы ошибок:</strong> {{ behavior_analysis.error_types }}</p>
+                    {% endif %}
+                    {% else %}
+                    <p class="text-muted mb-0">Недостаточно данных для анализа</p>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0"><i class="fas fa-lightbulb me-2"></i>Рекомендации</h5>
+                </div>
+                <div class="card-body">
+                    {% if profile.recommendations %}
+                    <div class="recommendations-text">{{ profile.recommendations|linebreaks }}</div>
+                    {% else %}
+                    <p class="text-muted mb-0">Рекомендации не сформированы</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Вкладка: Профиль -->
+        <div class="tab-pane fade" id="profile" role="tabpanel">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Информация о пациенте</h5>
+                    <p><strong>ФИО:</strong> {{ patient.name }}</p>
+                    <p><strong>Логин:</strong> {{ patient.username }}</p>
+                    <p><strong>Дата рождения:</strong> {{ patient.date_of_b|date:"d.m.Y" }}</p>
+                    {% if profile.cognitive_style %}
+                    <p><strong>Когнитивный стиль:</strong> {{ profile.get_cognitive_style_display }}</p>
+                    {% endif %}
+                    <p class="text-muted small mb-0">Профиль создан: {{ profile.date_created|date:"d.m.Y H:i" }}</p>
+                </div>
             </div>
         </div>
     </div>
 </div>
+{% endblock %}
 
-<div class="card mb-4">
-    <div class="card-body">
-        <h4 class="card-title">Создать новый рецепт</h4>
-        <form method="POST">
-            {% csrf_token %}
-            <div class="form-group">
-                <label for="id_text">Рецепт</label>
-                {{ form.text }}
-            </div>
-            <button type="submit" class="btn btn-primary">Создать рецепт</button>
-        </form>
-    </div>
-</div>
-
-</form>
-
-<button onclick="window.history.back()" class="btn btn-primary">Назад</button>
-
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% block scripts %}
+{{ block.super }}
 <script>
-    const emotionScores = {{ emotion_scores|safe }};
-    const ctx = document.getElementById('emotionChart').getContext('2d');
-    new Chart(ctx, {
-        type: 'bar',
+document.addEventListener('DOMContentLoaded', function() {
+    const radarData = {{ radar_data|safe }};
+    const radarCtx = document.getElementById('radarChart').getContext('2d');
+    
+    new Chart(radarCtx, {
+        type: 'radar',
         data: {
+            labels: [
+                'Диагностическая глубина',
+                'Мотивационный потенциал',
+                'Объективность',
+                'Экологическая валидность',
+                'Динамическая оценка'
+            ],
             datasets: [{
-                label: 'Эмоциональные баллы',
-                data: emotionScores,
-                backgroundColor: [
-                    'rgba(75, 192, 192, 0.2)',
-                    'rgba(255, 99, 132, 0.2)',
-                    'rgba(255, 206, 86, 0.2)',
-                    'rgba(153, 102, 255, 0.2)',
-                    'rgba(54, 162, 235, 0.2)',
-                    'rgba(255, 159, 64, 0.2)'
+                label: 'Профиль',
+                data: [
+                    radarData.diagnostic_depth || 0,
+                    radarData.motivational_potential || 0,
+                    radarData.objectivity || 0,
+                    radarData.ecological_validity || 0,
+                    radarData.dynamic_assessment || 0
                 ],
-                borderColor: [
-                    'rgba(75, 192, 192, 1)',
-                    'rgba(255, 99, 132, 1)',
-                    'rgba(255, 206, 86, 1)',
-                    'rgba(153, 102, 255, 1)',
-                    'rgba(54, 162, 235, 1)',
-                    'rgba(255, 159, 64, 1)'
-                ],
-                borderWidth: 1
+                backgroundColor: 'rgba(40, 167, 69, 0.2)',
+                borderColor: 'rgba(40, 167, 69, 1)',
+                borderWidth: 2
             }]
         },
         options: {
-            scales: {
-                y: {
-                    beginAtZero: true
-                }
-            }
+            scales: { r: { beginAtZero: true, max: 100 } },
+            plugins: { legend: { display: false } }
         }
     });
 
-  // Проверка отправки данных через JS
-    document.querySelector('form').onsubmit = function() {
-    console.log("Данные формы:", new FormData(this));
-}
-
+    const emotionData = {{ emotion_chart_data|safe }};
+    if (emotionData && emotionData.labels && emotionData.data) {
+        const emotionCtx = document.getElementById('emotionChart').getContext('2d');
+        new Chart(emotionCtx, {
+            type: 'bar',
+            data: {
+                labels: emotionData.labels,
+                datasets: [{
+                    label: 'Эмоции',
+                    data: emotionData.data,
+                    backgroundColor: [
+                        'rgba(220, 53, 69, 0.6)',
+                        'rgba(108, 117, 125, 0.6)',
+                        'rgba(255, 193, 7, 0.6)',
+                        'rgba(40, 167, 69, 0.6)',
+                        'rgba(13, 110, 253, 0.6)',
+                        'rgba(214, 51, 132, 0.6)'
+                    ],
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: { y: { beginAtZero: true } }
+            }
+        });
+    }
+});
 </script>
-
+{% endblock %}
 {% endblock %}

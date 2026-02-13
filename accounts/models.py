@@ -29,6 +29,14 @@ class CUsers(models.Model):
         related_name='parents',
         blank=True
     )
+    # Пациенты врача (дети, добавленные по коду)
+    patients = models.ManyToManyField(
+        'self',
+        symmetrical=False,
+        related_name='doctors',
+        blank=True,
+        limit_choices_to={'role': 'child'}
+    )
     
     # Код для присоединения
     connection_code = models.CharField(max_length=10, blank=True, null=True, unique=True)

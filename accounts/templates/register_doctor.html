@@ -1,0 +1,181 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Регистрация врача{% endblock %}
+
+{% block content %}
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
+<style>
+    .register-doctor-container { max-width: 560px; margin: 0 auto; padding: 20px; }
+    .register-doctor-container .container { height: auto !important; justify-content: flex-start !important; }
+    .form-text-hint { font-size: 0.8rem; color: #6c757d; margin-top: 0.25rem; }
+    .license-notice { background: #e3f2fd; border-left: 4px solid #2196f3; padding: 1rem; border-radius: 0 8px 8px 0; margin-bottom: 1.5rem; }
+</style>
+
+<div class="register-doctor-container">
+    <div class="text-center mb-4">
+        <h2><i class="fas fa-user-md text-primary me-2"></i>Регистрация врача</h2>
+        <p class="text-muted">Заполните форму для создания аккаунта</p>
+    </div>
+
+    <div class="license-notice">
+        <i class="fas fa-info-circle me-2"></i>
+        <strong>Проверка лицензии.</strong> Ваша лицензия будет проверена администратором. 
+        После подтверждения вы получите полный доступ к системе.
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-body p-4">
+            <form method="post" enctype="multipart/form-data" id="doctorRegisterForm" novalidate>
+                {% csrf_token %}
+                
+                {% if form.non_field_errors %}
+                <div class="alert alert-danger">
+                    {% for error in form.non_field_errors %}{{ error }}{% endfor %}
+                </div>
+                {% endif %}
+
+                <h6 class="text-muted mb-3">Основные данные</h6>
+                
+                <div class="mb-3">
+                    <label for="id_username" class="form-label">Логин <span class="text-danger">*</span></label>
+                    <input type="text" name="username" id="id_username" class="form-control {% if form.username.errors %}is-invalid{% endif %}" 
+                           value="{{ form.username.value|default:'' }}" placeholder="Уникальное имя для входа" 
+                           required minlength="3" maxlength="150" autocomplete="username">
+                    <div class="form-text-hint">Латинские буквы и цифры, от 3 символов</div>
+                    {% for error in form.username.errors %}<div class="invalid-feedback">{{ error }}</div>{% endfor %}
+                </div>
+
+                <div class="mb-3">
+                    <label for="id_name" class="form-label">ФИО <span class="text-danger">*</span></label>
+                    <input type="text" name="name" id="id_name" class="form-control {% if form.name.errors %}is-invalid{% endif %}" 
+                           value="{{ form.name.value|default:'' }}" placeholder="Иванов Иван Иванович" required>
+                    {% for error in form.name.errors %}<div class="invalid-feedback">{{ error }}</div>{% endfor %}
+                </div>
+
+                <div class="mb-3">
+                    <label for="id_date_of_b" class="form-label">Дата рождения <span class="text-danger">*</span></label>
+                    <input type="date" name="date_of_b" id="id_date_of_b" class="form-control {% if form.date_of_b.errors %}is-invalid{% endif %}" 
+                           value="{{ form.date_of_b.value|default:'' }}" required max="{{ today }}">
+                    {% for error in form.date_of_b.errors %}<div class="invalid-feedback">{{ error }}</div>{% endfor %}
+                </div>
+
+                <hr class="my-4">
+                <h6 class="text-muted mb-3">Пароль</h6>
+
+                <div class="mb-3">
+                    <label for="id_password" class="form-label">Пароль <span class="text-danger">*</span></label>
+                    <input type="password" name="password" id="id_password" class="form-control {% if form.password.errors %}is-invalid{% endif %}" 
+                           placeholder="Не менее 6 символов" required minlength="6" autocomplete="new-password">
+                    <div class="form-text-hint">Минимум 6 символов</div>
+                    {% for error in form.password.errors %}<div class="invalid-feedback">{{ error }}</div>{% endfor %}
+                </div>
+
+                <div class="mb-3">
+                    <label for="id_password_confirm" class="form-label">Подтверждение пароля <span class="text-danger">*</span></label>
+                    <input type="password" name="password_confirm" id="id_password_confirm" class="form-control" 
+                           placeholder="Повторите пароль" required minlength="6" autocomplete="new-password">
+                    <div class="invalid-feedback" id="passwordMismatchMsg">Пароли не совпадают</div>
+                </div>
+
+                <hr class="my-4">
+                <h6 class="text-muted mb-3">Лицензия</h6>
+
+                <div class="mb-3">
+                    <label for="id_license_number" class="form-label">Номер лицензии <span class="text-danger">*</span></label>
+                    <input type="text" name="license_number" id="id_license_number" class="form-control {% if form.license_number.errors %}is-invalid{% endif %}" 
+                           value="{{ form.license_number.value|default:'' }}" placeholder="Например: ABC12345" 
+                           required pattern="[A-Za-z0-9]{5,20}" maxlength="50">
+                    <div class="form-text-hint">Только латинские буквы и цифры, от 5 до 20 символов</div>
+                    {% for error in form.license_number.errors %}<div class="invalid-feedback">{{ error }}</div>{% endfor %}
+                </div>
+
+                <div class="mb-3">
+                    <label for="id_license_scan" class="form-label">Текст лицензии</label>
+                    <textarea name="license_scan" id="id_license_scan" class="form-control {% if form.license_scan.errors %}is-invalid{% endif %}" 
+                              rows="4" placeholder="Вставьте текст лицензии или скопируйте основные данные">{{ form.license_scan.value|default:'' }}</textarea>
+                    <div class="form-text-hint">Или загрузите файл ниже</div>
+                    {% for error in form.license_scan.errors %}<div class="invalid-feedback">{{ error }}</div>{% endfor %}
+                </div>
+
+                <div class="mb-4">
+                    <label for="id_license_file" class="form-label">Файл лицензии</label>
+                    <input type="file" name="license_file" id="id_license_file" class="form-control {% if form.license_file.errors %}is-invalid{% endif %}" 
+                           accept=".pdf,.jpg,.jpeg,.png">
+                    <div class="form-text-hint">PDF, JPG или PNG, до 5 МБ</div>
+                    {% for error in form.license_file.errors %}<div class="invalid-feedback">{{ error }}</div>{% endfor %}
+                </div>
+
+                <button type="submit" class="btn btn-primary w-100 py-2">
+                    <i class="fas fa-user-plus me-2"></i>Зарегистрироваться
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <p class="text-center mt-3 text-muted small">
+        Уже есть аккаунт? <a href="{% url 'login' %}">Войти</a>
+    </p>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('doctorRegisterForm');
+    const password = document.getElementById('id_password');
+    const passwordConfirm = document.getElementById('id_password_confirm');
+    const mismatchMsg = document.getElementById('passwordMismatchMsg');
+
+    // Максимальная дата — сегодня (для date_of_b)
+    const today = new Date().toISOString().split('T')[0];
+    const dateInput = document.getElementById('id_date_of_b');
+    if (dateInput && !dateInput.getAttribute('max')) dateInput.setAttribute('max', today);
+
+    // Проверка совпадения паролей
+    function checkPasswordMatch() {
+        if (passwordConfirm.value && password.value !== passwordConfirm.value) {
+            passwordConfirm.setCustomValidity('Пароли не совпадают');
+            passwordConfirm.classList.add('is-invalid');
+        } else {
+            passwordConfirm.setCustomValidity('');
+            passwordConfirm.classList.remove('is-invalid');
+        }
+    }
+    password.addEventListener('input', checkPasswordMatch);
+    passwordConfirm.addEventListener('input', checkPasswordMatch);
+
+    // Валидация номера лицензии (латиница и цифры)
+    const licenseInput = document.getElementById('id_license_number');
+    if (licenseInput) {
+        licenseInput.addEventListener('input', function() {
+            this.value = this.value.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+        });
+    }
+
+    // Проверка размера файла (5 МБ)
+    const fileInput = document.getElementById('id_license_file');
+    if (fileInput) {
+        fileInput.addEventListener('change', function() {
+            const file = this.files[0];
+            if (file && file.size > 5 * 1024 * 1024) {
+                this.setCustomValidity('Файл не должен превышать 5 МБ');
+                this.classList.add('is-invalid');
+            } else {
+                this.setCustomValidity('');
+                this.classList.remove('is-invalid');
+            }
+        });
+    }
+
+    form.addEventListener('submit', function(e) {
+        checkPasswordMatch();
+        if (!form.checkValidity()) {
+            e.preventDefault();
+            form.classList.add('was-validated');
+        }
+    });
+});
+</script>
+{% endblock %}

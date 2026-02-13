@@ -1,0 +1,321 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Углублённый анализ — {{ patient.name }}{% endblock %}
+
+{% block content %}
+<!-- Bootstrap 5 & Chart.js -->
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+    .analysis-container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+    .analysis-container .container { height: auto !important; justify-content: flex-start !important; }
+    .print-only { display: none; }
+    @media print {
+        .no-print { display: none !important; }
+        .print-only { display: block !important; }
+        body { background: white; }
+    }
+    .term-badge { font-size: 0.85rem; }
+    .radar-container { position: relative; height: 350px; }
+</style>
+
+<div class="analysis-container">
+    <!-- Заголовок и кнопки действий -->
+    <div class="d-flex justify-content-between align-items-center mb-4 no-print">
+        <div>
+            <h2 class="mb-1">Углублённый анализ пациента</h2>
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb mb-0">
+                    <li class="breadcrumb-item"><a href="{% url 'doctor_dashboard' %}">Панель врача</a></li>
+                    <li class="breadcrumb-item"><a href="{% url 'patient_detail' patient.id %}">{{ patient.name }}</a></li>
+                    <li class="breadcrumb-item active">Нечёткий анализ</li>
+                </ol>
+            </nav>
+        </div>
+        <div class="btn-group">
+            <a href="{% url 'doctor_export_patient' patient.id %}" class="btn btn-outline-primary">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/><path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/></svg>
+                Экспорт
+            </a>
+            <button onclick="window.print()" class="btn btn-outline-secondary">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M2.5 8a.5.5 0 1 0 0-1 .5.5 0 0 0 0 1z"/><path d="M5 1a2 2 0 0 0-2 2v2H2a2 2 0 0 0-2 2v3a2 2 0 0 0 2 2h1v1a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-1h1a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-1V3a2 2 0 0 0-2-2H5zM4 3a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2H4V3zm1 5a2 2 0 0 0-2 2v1H2a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v-1a2 2 0 0 0-2-2H5zm7 2v3a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1z"/></svg>
+                Печать
+            </button>
+        </div>
+    </div>
+
+    <!-- Индикатор использования нечёткой логики -->
+    <div class="alert alert-info d-flex align-items-center mb-4" role="alert">
+        <span class="me-2">📊</span>
+        <div>
+            <strong>Анализ выполнен с использованием нечёткой логики</strong>
+            <p class="mb-0 small">Диагностический профиль, принадлежность к термам, радарная диаграмма и рекомендации рассчитаны модулем FuzzyAnalyzer на основе лингвистических переменных и правил нечёткого вывода (НИР, раздел 3.1.3).</p>
+        </div>
+    </div>
+
+    <!-- 1. Информация о пациенте -->
+    <div class="card mb-4 shadow-sm">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">Информация о пациенте</h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <p class="mb-1"><strong>ФИО:</strong> {{ patient.name }}</p>
+                    <p class="mb-1"><strong>Дата рождения:</strong> {{ patient.date_of_b|date:"d.m.Y" }}</p>
+                    <p class="mb-1"><strong>Логин:</strong> {{ patient.username }}</p>
+                </div>
+                <div class="col-md-6">
+                    <p class="mb-1"><strong>Дата создания профиля:</strong> {{ profile.date_created|date:"d.m.Y H:i" }}</p>
+                    {% if profile.cognitive_style %}
+                    <p class="mb-1"><strong>Когнитивный стиль:</strong> {{ profile.get_cognitive_style_display }}</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. Радарная диаграмма -->
+    <div class="card mb-4 shadow-sm">
+        <div class="card-header bg-success text-white">
+            <h5 class="mb-0">Диагностический профиль (радарная диаграмма)</h5>
+        </div>
+        <div class="card-body">
+            <div class="radar-container">
+                <canvas id="radarChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- 3. Принадлежность к термам -->
+    <div class="card mb-4 shadow-sm">
+        <div class="card-header bg-info text-white">
+            <h5 class="mb-0">Принадлежность к термам нечёткой логики</h5>
+        </div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <h6>Диагностическая глубина</h6>
+                    {% for term, value in profile.diagnostic_depth.items %}
+                    <span class="badge bg-secondary term-badge me-1 mb-1">{{ term }}: {{ value|floatformat:2 }}</span>
+                    {% empty %}<span class="text-muted">Нет данных</span>{% endfor %}
+                </div>
+                <div class="col-md-6">
+                    <h6>Мотивационный потенциал</h6>
+                    {% for term, value in profile.motivational_potential.items %}
+                    <span class="badge bg-secondary term-badge me-1 mb-1">{{ term }}: {{ value|floatformat:2 }}</span>
+                    {% empty %}<span class="text-muted">Нет данных</span>{% endfor %}
+                </div>
+                <div class="col-md-6">
+                    <h6>Объективность</h6>
+                    {% for term, value in profile.objectivity.items %}
+                    <span class="badge bg-secondary term-badge me-1 mb-1">{{ term }}: {{ value|floatformat:2 }}</span>
+                    {% empty %}<span class="text-muted">Нет данных</span>{% endfor %}
+                </div>
+                <div class="col-md-6">
+                    <h6>Экологическая валидность</h6>
+                    {% for term, value in profile.ecological_validity.items %}
+                    <span class="badge bg-secondary term-badge me-1 mb-1">{{ term }}: {{ value|floatformat:2 }}</span>
+                    {% empty %}<span class="text-muted">Нет данных</span>{% endfor %}
+                </div>
+                <div class="col-md-6">
+                    <h6>Динамическая оценка</h6>
+                    {% for term, value in profile.dynamic_assessment.items %}
+                    <span class="badge bg-secondary term-badge me-1 mb-1">{{ term }}: {{ value|floatformat:2 }}</span>
+                    {% empty %}<span class="text-muted">Нет данных</span>{% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 4. Динамика эмоций -->
+    <div class="card mb-4 shadow-sm">
+        <div class="card-header bg-warning text-dark">
+            <h5 class="mb-0">Динамика эмоций</h5>
+        </div>
+        <div class="card-body">
+            <div class="mb-3">
+                <canvas id="emotionChart" height="120"></canvas>
+            </div>
+            {% if emotion_dynamics %}
+            <div class="table-responsive">
+                <table class="table table-sm table-bordered">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Эмоция</th>
+                            <th>Начало</th>
+                            <th>Конец</th>
+                            <th>Изменение</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for emotion, data in emotion_dynamics.items %}
+                        <tr>
+                            <td>{{ emotion }}</td>
+                            <td>{{ data.first }}</td>
+                            <td>{{ data.last }}</td>
+                            <td>
+                                {% if data.change > 0 %}<span class="text-success">+{{ data.change }}</span>
+                                {% elif data.change < 0 %}<span class="text-danger">{{ data.change }}</span>
+                                {% else %}<span class="text-muted">0</span>{% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-muted">Недостаточно данных для анализа динамики (нужно минимум 2 результата)</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- 5. Поведенческие траектории -->
+    <div class="card mb-4 shadow-sm">
+        <div class="card-header bg-secondary text-white">
+            <h5 class="mb-0">Поведенческие траектории</h5>
+        </div>
+        <div class="card-body">
+            {% if behavior_trajectories %}
+            <div class="accordion" id="trajectoryAccordion">
+                {% for item in behavior_trajectories %}
+                <div class="accordion-item">
+                    <h2 class="accordion-header">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#traj-{{ forloop.counter }}">
+                            {{ item.game_type }} — {{ item.date|slice:":10" }}
+                        </button>
+                    </h2>
+                    <div id="traj-{{ forloop.counter }}" class="accordion-collapse collapse" data-bs-parent="#trajectoryAccordion">
+                        <div class="accordion-body">
+                            <ul class="list-unstyled mb-0 small" style="max-height: 200px; overflow-y: auto;">
+                                {% for action in item.trajectory %}
+                                <li class="mb-1"><strong>{{ action.type }}</strong>: {{ action.data }} <span class="text-muted">({{ action.timestamp|slice:":19" }})</span></li>
+                                {% empty %}
+                                <li class="text-muted">Пусто</li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="text-muted">Поведенческие траектории не зафиксированы</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- 6. Рекомендации -->
+    <div class="card mb-4 shadow-sm">
+        <div class="card-header bg-dark text-white">
+            <h5 class="mb-0">Рекомендации</h5>
+        </div>
+        <div class="card-body">
+            {% if profile.recommendations %}
+            <div class="recommendations-text">{{ profile.recommendations|linebreaks }}</div>
+            {% else %}
+            <p class="text-muted">Рекомендации не сформированы</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Кнопка назад -->
+    <div class="mb-4 no-print">
+        <a href="{% url 'patient_detail' patient.id %}" class="btn btn-primary">← К карточке пациента</a>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const radarData = {{ radar_data|safe }};
+    const radarCtx = document.getElementById('radarChart').getContext('2d');
+    
+    new Chart(radarCtx, {
+        type: 'radar',
+        data: {
+            labels: [
+                'Диагностическая глубина',
+                'Мотивационный потенциал',
+                'Объективность',
+                'Экологическая валидность',
+                'Динамическая оценка'
+            ],
+            datasets: [{
+                label: 'Профиль пациента',
+                data: [
+                    radarData.diagnostic_depth || 0,
+                    radarData.motivational_potential || 0,
+                    radarData.objectivity || 0,
+                    radarData.ecological_validity || 0,
+                    radarData.dynamic_assessment || 0
+                ],
+                backgroundColor: 'rgba(40, 167, 69, 0.2)',
+                borderColor: 'rgba(40, 167, 69, 1)',
+                borderWidth: 2,
+                pointBackgroundColor: 'rgba(40, 167, 69, 1)'
+            }]
+        },
+        options: {
+            scales: {
+                r: {
+                    beginAtZero: true,
+                    max: 100,
+                    ticks: { stepSize: 20 }
+                }
+            },
+            plugins: {
+                legend: { display: false }
+            }
+        }
+    });
+
+    const emotionData = {{ emotion_chart_data|safe }};
+    const emotionCtx = document.getElementById('emotionChart').getContext('2d');
+    const colors = {
+        'гнев': 'rgba(220, 53, 69, 0.8)',
+        'скука': 'rgba(108, 117, 125, 0.8)',
+        'радость': 'rgba(255, 193, 7, 0.8)',
+        'счастье': 'rgba(40, 167, 69, 0.8)',
+        'грусть': 'rgba(13, 110, 253, 0.8)',
+        'любовь': 'rgba(214, 51, 132, 0.8)'
+    };
+    
+    const datasets = [];
+    for (const [emotion, values] of Object.entries(emotionData)) {
+        if (emotion !== 'dates' && Array.isArray(values)) {
+            datasets.push({
+                label: emotion,
+                data: values,
+                borderColor: colors[emotion] || 'rgba(0,0,0,0.5)',
+                backgroundColor: (colors[emotion] || 'rgba(0,0,0,0.2)').replace('0.8', '0.1'),
+                fill: false,
+                tension: 0.3
+            });
+        }
+    }
+
+    if (datasets.length > 0 && emotionData.dates && emotionData.dates.length > 0) {
+        new Chart(emotionCtx, {
+            type: 'line',
+            data: {
+                labels: emotionData.dates,
+                datasets: datasets
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: { beginAtZero: true },
+                    x: { ticks: { maxRotation: 45 } }
+                },
+                plugins: {
+                    legend: { position: 'bottom' }
+                }
+            }
+        });
+    }
+});
+</script>
+{% endblock %}

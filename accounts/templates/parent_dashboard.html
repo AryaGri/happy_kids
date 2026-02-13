@@ -2,25 +2,43 @@
 
 {% block content %}
 <div class="container mt-5">
-    <form>
-    <h2 class="text-center">Мои дети</h2>
-    {% csrf_token %}
+    <h2 class="text-center mb-4">Мои дети</h2>
+
+    <div class="card mb-4">
+        <div class="card-body">
+            <h5 class="card-title"><i class="fas fa-plus-circle me-2"></i>Добавить ребёнка по коду</h5>
+            <p class="text-muted small mb-3">Попросите ребёнка показать код из его личного кабинета и введите его ниже</p>
+            <form method="post" class="row g-2 align-items-end">
+                {% csrf_token %}
+                <input type="hidden" name="connect_code" value="1">
+                <div class="col-auto flex-grow-1">
+                    <label for="id_code" class="form-label visually-hidden">Код ребёнка</label>
+                    <input type="text" name="code" id="id_code" class="form-control {% if code_form.code.errors %}is-invalid{% endif %}" 
+                           placeholder="Введите код ребёнка" maxlength="10" value="{{ code_form.code.value|default:'' }}">
+                    {% for error in code_form.code.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+                </div>
+                <div class="col-auto">
+                    <button type="submit" class="btn btn-primary">Добавить</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <div class="row mt-4">
-        {% csrf_token %}
-        {% for child in children %}
+        {% for item in children_stats %}
         <div class="col-md-4 mb-4">
             <div class="card">
                 <div class="card-body">
-                    <h3 class="card-title">{{ child.name }}</h3>  
-                    <p><strong>Дата рождения:</strong> {{ child.date_of_b }}</p>  
-                    <a href="{% url 'child_detail' child.id %}" class="btn btn-primary">Просмотреть</a>
+                    <h5 class="card-title">{{ item.child.name }}</h5>
+                    <p class="card-text"><strong>Дата рождения:</strong> {{ item.child.date_of_b }}</p>
+                    {% if item.total_games %}<p class="card-text small text-muted">Игр сыграно: {{ item.total_games }}</p>{% endif %}
+                    <a href="{% url 'child_detail' item.child.id %}" class="btn btn-primary">Просмотреть</a>
                 </div>
             </div>
         </div>
         {% empty %}
-        <p>У вас нет детей в системе.</p>
+        <p class="text-muted">У вас пока нет детей. Добавьте ребёнка по коду выше или при регистрации ребёнка укажите ваш код.</p>
         {% endfor %}
     </div>
-</form>
 </div>
 {% endblock %}

@@ -1,8 +1,9 @@
 {% extends "base.html" %}
 {% block content %}
-<form method="POST" class="form1" >
-    
+<form method="POST" class="form1">
     {% csrf_token %}
+    <input type="hidden" name="session_id" value="{{ session.id }}">
+
     <!-- Вопрос 1 -->
     <div class="question">
         <p>1. Привет! Как твои дела?</p>
@@ -15,41 +16,41 @@
     <div class="question">
         <p>2. Что тебе сегодня снилось?</p>
         <label><input type="radio" name="question_2" value="0"> Прекрасный сон</label><br>
-        <label><input type="radio" name="question_2" value="1"> Кошмары </label><br>
-        <label><input type="radio" name="question_2" value="0"> Не помню </label>
+        <label><input type="radio" name="question_2" value="1"> Кошмары</label><br>
+        <label><input type="radio" name="question_2" value="0"> Не помню</label>
     </div>
 
     <!-- Вопрос 3 -->
     <div class="question">
         <p>3. Что ты сегодня делал(а)?</p>
-        <label><input type="radio" name="question_3" value="1"> Играл(а) с друзьями </label><br>
-        <label><input type="radio" name="question_3" value="0"> Смотрел(а) Мультики </label><br>
-        <label><input type="radio" name="question_3" value="0"> Ничего </label>
+        <label><input type="radio" name="question_3" value="1"> Играл(а) с друзьями</label><br>
+        <label><input type="radio" name="question_3" value="0"> Смотрел(а) мультики</label><br>
+        <label><input type="radio" name="question_3" value="0"> Ничего</label>
     </div>
 
     <!-- Вопрос 4 -->
     <div class="question">
         <p>4. Хочешь сейчас обнять кого-нибудь или побыть один(одна)?</p>
-        <label><input type="radio" name="question_4a" value="1"> Хочу обнимашки </label><br>
-        <label><input type="radio" name="question_4" value="0"> Даже не знаю </label><br>
-        <label><input type="radio" name="question_4" value="0"> Хочу побыть в одиночестве </label>
+        <label><input type="radio" name="question_4" value="love"> Хочу обнимашки</label><br>
+        <label><input type="radio" name="question_4" value="unsure"> Даже не знаю</label><br>
+        <label><input type="radio" name="question_4" value="alone"> Хочу побыть в одиночестве</label>
     </div>
 
     <!-- Вопрос 5 -->
     <div class="question">
         <p>5. Сегодня было больше весёлых или скучных моментов?</p>
-        <label><input type="radio" name="question_5a" value="1"> Весёлых (Счастье)</label><br>
-        <label><input type="radio" name="question_5" value="0"> Скучных (Грусть)</label><br>
-        <label><input type="radio" name="question_5" value="0"> Одинаково (Скука)</label>
+        <label><input type="radio" name="question_5" value="happy"> Весёлых (Счастье)</label><br>
+        <label><input type="radio" name="question_5" value="sad"> Скучных (Грусть)</label><br>
+        <label><input type="radio" name="question_5" value="bored"> Одинаково (Скука)</label>
     </div>
 
-    <!-- Вопрос 6 -->
     <div class="question">
-        <p>Пока-пока</p>
-        <!-- Здесь кнопка будет частью формы, отправляющей данные -->
+        <p>Пока-пока! 👋</p>
     </div>
+
+    <button type="submit">Сохранить ответы</button>
 </form>
 
-<a href="{% url 'game_dashboard' user.id %}" class="btn btn-secondary mt-3">Назад к дашборду</a>
+<a href="{% url 'game_dashboard' child.id %}" class="btn btn-secondary mt-3">Назад к дашборду</a>
   <br>
 {% endblock %}

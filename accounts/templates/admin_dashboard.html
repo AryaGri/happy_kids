@@ -8,7 +8,6 @@
                             <label for="role">Роль:</label>
                             <select name="role" id="role" class="form-control">
                                 <option value="">Все</option>
-                                <option value="admin" {% if request.GET.role == 'admin' %}selected{% endif %}>Администратор</option>
                                 <option value="doctor" {% if request.GET.role == 'doctor' %}selected{% endif %}>Врач</option>
                                 <option value="parent" {% if request.GET.role == 'parent' %}selected{% endif %}>Родитель</option>
                                 <option value="child" {% if request.GET.role == 'child' %}selected{% endif %}>Ребёнок</option>
@@ -23,22 +22,23 @@
                         {% for user in users %}
                             <p>{{user.name|safe}}, {{user.get_role_display|safe}}</p>
                             {% if user.role == 'child' %}
-                            <a href={% url 'edit_user' user.id %} class="btn btn-primary">Перейти</a>
+                            <a href="{% url 'edit_user' user.id %}" class="btn btn-primary btn-sm">Редактировать</a>
                             {% elif user.role == 'parent' %}
-                            <a href={% url 'edit_parent' user.id %} class="btn btn-primary">Перейти</a>
+                            <a href="{% url 'edit_parent' user.id %}" class="btn btn-primary btn-sm">Редактировать</a>
                             {% elif user.role == 'doctor' %}
-                            <a href={% url 'edit_doctor' user.id %} class="btn btn-primary">Перейти</a>
-                            {% elif user.role == 'admin' %}
-                            <a href={% url 'edit_user' user.id %} class="btn btn-primary">Перейти</a>
+                            <a href="{% url 'edit_doctor' user.id %}" class="btn btn-primary btn-sm">Редактировать</a>
                             {% endif %}
+                            <a href="{% url 'admin_delete_user' user.id %}" class="btn btn-outline-danger btn-sm">Удалить</a>
                             <br>
                             <p> </p>
                         {% endfor %}
                         <br>                        
                     </form>
                     
-                    <a href="{% url 'register' %}">Создать нового пользователя</a>
-
-  
+                    <div class="mt-4">
+                        <a href="{% url 'register' %}" class="btn btn-outline-primary me-2">Создать пользователя</a>
+                        <a href="{% url 'admin_verify_licenses' %}" class="btn btn-outline-success me-2">Проверить лицензии врачей</a>
+                        <a href="{% url 'admin_bulk_assign' %}" class="btn btn-outline-info">Массовое назначение детей</a>
+                    </div>
 </div>
 {% endblock %}

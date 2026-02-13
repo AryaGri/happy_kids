@@ -2,8 +2,27 @@
 
 {% block content %}
 <div class="container mt-5">
-    <form class='form1'>
-    <h2 class="text-center">Список пациентов</h2>
+    <h2 class="text-center mb-4">Список пациентов</h2>
+
+    <div class="card mb-4">
+        <div class="card-body">
+            <h5 class="card-title"><i class="fas fa-user-plus me-2"></i>Добавить пациента по коду</h5>
+            <p class="text-muted small mb-3">Попросите ребёнка показать код из его личного кабинета и введите его ниже</p>
+            <form method="post" class="row g-2 align-items-end">
+                {% csrf_token %}
+                <input type="hidden" name="connect_code" value="1">
+                <div class="col-auto flex-grow-1">
+                    <label for="id_code" class="form-label visually-hidden">Код ребёнка</label>
+                    <input type="text" name="code" id="id_code" class="form-control {% if code_form.code.errors %}is-invalid{% endif %}" 
+                           placeholder="Введите код ребёнка" maxlength="10" value="{{ code_form.code.value|default:'' }}">
+                    {% for error in code_form.code.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+                </div>
+                <div class="col-auto">
+                    <button type="submit" class="btn btn-primary">Добавить</button>
+                </div>
+            </form>
+        </div>
+    </div>
 
     <div class="row mt-4">
         {% for patient in patients %}
@@ -16,8 +35,11 @@
                 </div>
             </div>
         </div>
+        {% empty %}
+        <div class="col-12">
+            <p class="text-muted">У вас пока нет пациентов. Добавьте ребёнка по коду выше.</p>
+        </div>
         {% endfor %}
     </div>
-</form>
 </div>
 {% endblock %}

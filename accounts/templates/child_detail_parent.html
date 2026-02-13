@@ -1,0 +1,182 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Мой ребёнок — {{ child.name }}{% endblock %}
+
+{% block content %}
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+    .child-detail-container { max-width: 900px; margin: 0 auto; padding: 20px; }
+    .child-detail-container .container { height: auto !important; justify-content: flex-start !important; }
+    .friendly-card { border-radius: 16px; border: none; box-shadow: 0 4px 20px rgba(0,0,0,0.06); }
+    .friendly-card .card-header { border-radius: 16px 16px 0 0; font-weight: 600; }
+    .emotion-emoji { font-size: 1.5rem; }
+    .game-badge { border-radius: 12px; padding: 6px 12px; font-size: 0.9rem; }
+    .prescription-card { border-left: 4px solid #6f42c1; }
+    .recommendation-box { background: linear-gradient(135deg, #e8f5e9 0%, #f1f8e9 100%); border-radius: 12px; padding: 1rem 1.25rem; }
+    .chart-container { position: relative; height: 220px; }
+</style>
+
+<div class="child-detail-container">
+    <!-- Заголовок -->
+    <div class="mb-4">
+        <a href="{% url 'parent_dashboard' parent.id %}" class="text-decoration-none text-secondary mb-2 d-inline-block">
+            ← Назад к моим детям
+        </a>
+        <h2 class="mb-1">👋 {{ child.name }}</h2>
+        <p class="text-muted mb-0">Дата рождения: {{ child.date_of_b|date:"d.m.Y" }}</p>
+    </div>
+
+    <!-- 1. Эмоциональный настрой (круговая диаграмма) -->
+    <div class="card friendly-card mb-4">
+        <div class="card-header bg-white text-dark py-3">
+            <span class="emotion-emoji">💚</span> Эмоциональный настрой
+        </div>
+        <div class="card-body">
+            <div class="row align-items-center">
+                <div class="col-md-5">
+                    <div class="chart-container">
+                        <canvas id="emotionChart"></canvas>
+                    </div>
+                </div>
+                <div class="col-md-7">
+                    <ul class="list-unstyled mb-0">
+                        {% for emotion, pct in emotion_percentages.items %}
+                        {% if pct > 0 %}
+                        <li class="d-flex align-items-center mb-2">
+                            {% if emotion == 'радость' %}<span class="emotion-emoji me-2">😊</span>
+                            {% elif emotion == 'грусть' %}<span class="emotion-emoji me-2">😢</span>
+                            {% elif emotion == 'гнев' %}<span class="emotion-emoji me-2">😤</span>
+                            {% elif emotion == 'спокойствие' %}<span class="emotion-emoji me-2">😌</span>
+                            {% else %}<span class="emotion-emoji me-2">💭</span>{% endif %}
+                            <span class="flex-grow-1">{{ emotion|capfirst }}</span>
+                            <span class="badge rounded-pill bg-light text-dark">{{ pct }}%</span>
+                        </li>
+                        {% endif %}
+                        {% empty %}
+                        <li class="text-muted">Пока нет данных. Пусть ребёнок поиграет в игры!</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. Статистика игр (без конкретных результатов) -->
+    <div class="card friendly-card mb-4">
+        <div class="card-header bg-white text-dark py-3">
+            <span class="emotion-emoji">🎮</span> Активность
+        </div>
+        <div class="card-body">
+            {% if games_count > 0 %}
+            <p class="mb-0">Ребёнок сыграл <strong>{{ games_count }}</strong> {% if games_count == 1 %}игру{% elif games_count < 5 %}игры{% else %}игр{% endif %}.</p>
+            <p class="text-muted small mb-0 mt-2">Подробные результаты доступны только специалисту (врачу) для диагностики.</p>
+            {% else %}
+            <p class="text-muted mb-0">Пока нет сыгранных игр. Предложите ребёнку начать!</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- 3. Назначения врача -->
+    <div class="card friendly-card mb-4">
+        <div class="card-header bg-white text-dark py-3">
+            <span class="emotion-emoji">📋</span> Рекомендации специалиста
+        </div>
+        <div class="card-body">
+            {% if prescriptions %}
+            <div class="d-flex flex-column gap-3">
+                {% for prescription in prescriptions %}
+                <div class="prescription-card card bg-light">
+                    <div class="card-body py-3">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <span class="badge 
+                                {% if prescription.prescription_type == 'medication' %}bg-primary
+                                {% elif prescription.prescription_type == 'therapy' %}bg-info
+                                {% elif prescription.prescription_type == 'exercise' %}bg-success
+                                {% else %}bg-secondary{% endif %}">
+                                {% if prescription.prescription_type == 'medication' %}💊 Лекарство
+                                {% elif prescription.prescription_type == 'therapy' %}🧘 Занятия
+                                {% elif prescription.prescription_type == 'exercise' %}🏃 Упражнения
+                                {% else %}📌 Рекомендация{% endif %}
+                            </span>
+                            <small class="text-muted">{{ prescription.date_created|date:"d.m.Y" }}</small>
+                        </div>
+                        <p class="mb-0">{{ prescription.text }}</p>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="text-muted mb-0">Пока нет назначений. Врач добавит их при необходимости.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- 4. Советы для развития -->
+    <div class="card friendly-card mb-4">
+        <div class="card-header bg-white text-dark py-3">
+            <span class="emotion-emoji">💡</span> Советы для развития
+        </div>
+        <div class="card-body">
+            {% if profile and profile.recommendations %}
+            <div class="recommendation-box">
+                {{ profile.recommendations|linebreaks }}
+            </div>
+            {% else %}
+            <p class="text-muted mb-0">Советы появятся после того, как ребёнок поиграет в несколько игр.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const emotionData = {{ emotion_percentages_json|safe }};
+    const labels = [];
+    const data = [];
+    const bgColors = [];
+    const colors = {
+        'радость': 'rgba(76, 175, 80, 0.85)',
+        'грусть': 'rgba(33, 150, 243, 0.85)',
+        'гнев': 'rgba(244, 67, 54, 0.85)',
+        'спокойствие': 'rgba(156, 39, 176, 0.85)'
+    };
+    const order = ['радость', 'спокойствие', 'грусть', 'гнев'];
+    
+    for (const key of order) {
+        if (emotionData[key] !== undefined && emotionData[key] > 0) {
+            labels.push(key.charAt(0).toUpperCase() + key.slice(1));
+            data.push(emotionData[key]);
+            bgColors.push(colors[key] || 'rgba(158, 158, 158, 0.85)');
+        }
+    }
+    
+    if (data.length > 0) {
+        const ctx = document.getElementById('emotionChart').getContext('2d');
+        new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: labels,
+                datasets: [{
+                    data: data,
+                    backgroundColor: bgColors,
+                    borderWidth: 2,
+                    borderColor: '#fff'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false }
+                },
+                cutout: '60%'
+            }
+        });
+    }
+});
+</script>
+{% endblock %}

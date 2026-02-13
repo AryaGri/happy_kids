@@ -80,13 +80,12 @@ class DoctorRegistrationForm(UserCreateForm):
     )
     
     class Meta(UserCreateForm.Meta):
-        fields = UserCreateForm.Meta.fields + ['license_number']
+        fields = ['username', 'name', 'date_of_b', 'password', 'license_number']
     
     def clean_license_number(self):
-        license_number = self.cleaned_data['license_number']
-        # Простая валидация формата лицензии
+        license_number = self.cleaned_data['license_number'].strip().upper()
         if not re.match(r'^[A-Z0-9]{5,20}$', license_number):
-            raise ValidationError('Неверный формат номера лицензии')
+            raise ValidationError('Неверный формат номера лицензии (латиница и цифры, 5–20 символов)')
         return license_number
     
     def save(self, commit=True):
@@ -96,12 +95,15 @@ class DoctorRegistrationForm(UserCreateForm):
         if commit:
             user.save()
             # Создаём запись о лицензии
-            DoctorLicense.objects.create(
+            license_obj = DoctorLicense(
                 user=user,
                 license_number=self.cleaned_data['license_number'],
                 license_scan=self.cleaned_data.get('license_scan', ''),
                 is_verified=False
             )
+            if self.cleaned_data.get('license_file'):
+                license_obj.license_file = self.cleaned_data['license_file']
+            license_obj.save()
         return user
 
 
@@ -109,7 +111,7 @@ class ParentRegistrationForm(UserCreateForm):
     """Форма регистрации родителя"""
     
     class Meta(UserCreateForm.Meta):
-        fields = UserCreateForm.Meta.fields
+        fields = ['username', 'name', 'date_of_b', 'password']
     
     def save(self, commit=True):
         user = super().save(commit=False)
@@ -121,15 +123,9 @@ class ParentRegistrationForm(UserCreateForm):
 
 class ChildRegistrationForm(UserCreateForm):
     """Форма регистрации ребёнка"""
-    parent_code = forms.CharField(
-        label='Код родителя',
-        max_length=10,
-        required=False,
-        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Введите код родителя (если есть)'})
-    )
     
     class Meta(UserCreateForm.Meta):
-        fields = UserCreateForm.Meta.fields + ['parent_code']
+        fields = ['username', 'name', 'date_of_b', 'password']
     
     def clean_date_of_b(self):
         date_of_b = self.cleaned_data['date_of_b']
@@ -142,19 +138,8 @@ class ChildRegistrationForm(UserCreateForm):
     def save(self, commit=True):
         user = super().save(commit=False)
         user.role = 'child'
-        
         if commit:
             user.save()
-            
-            # Привязка к родителю по коду
-            parent_code = self.cleaned_data.get('parent_code')
-            if parent_code:
-                try:
-                    parent = CUsers.objects.get(connection_code=parent_code, role='parent')
-                    parent.children.add(user)
-                except CUsers.DoesNotExist:
-                    pass
-        
         return user
 
 
@@ -166,9 +151,9 @@ class ConnectionCodeForm(forms.Form):
         widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Введите код'})
     )
     
-    def __init__(self, user_role=None, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, *args, user_role=None, **kwargs):
         self.user_role = user_role
+        super().__init__(*args, **kwargs)
     
     def clean_code(self):
         code = self.cleaned_data['code']
@@ -264,15 +249,24 @@ class DoctorVerificationForm(forms.ModelForm):
         model = DoctorLicense
         fields = ['is_verified', 'rejection_reason']
         widgets = {
-            'rejection_reason': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
+            'is_verified': forms.RadioSelect(choices=[(True, 'Подтвердить'), (False, 'Отклонить')]),
+            'rejection_reason': forms.Textarea(attrs={'class': 'form-control', 'rows': 4, 'placeholder': 'Укажите причину отказа...'}),
         }
     
     def __init__(self, *args, **kwargs):
         self.admin = kwargs.pop('admin', None)
         super().__init__(*args, **kwargs)
-        
+        self.fields['is_verified'].label = 'Решение'
+        self.fields['rejection_reason'].label = 'Причина отказа'
+        self.fields['rejection_reason'].required = False
         if self.instance.is_verified:
             self.fields['is_verified'].widget.attrs['disabled'] = True
+    
+    def clean(self):
+        cleaned_data = super().clean()
+        if cleaned_data.get('is_verified') is False and not cleaned_data.get('rejection_reason', '').strip():
+            raise ValidationError('При отклонении необходимо указать причину отказа')
+        return cleaned_data
     
     def save(self, commit=True):
         instance = super().save(commit=False)
@@ -280,14 +274,37 @@ class DoctorVerificationForm(forms.ModelForm):
         if instance.is_verified and self.admin:
             instance.verified_by = self.admin
             instance.verified_date = timezone.now()
+            instance.rejection_reason = ''
+        elif not instance.is_verified:
+            instance.verified_by = None
+            instance.verified_date = None
         
         if commit:
             instance.save()
         return instance
 
 
+class ProfileSelfEditForm(forms.ModelForm):
+    """Форма для самостоятельного редактирования профиля (без role, is_auth)"""
+    
+    class Meta:
+        model = CUsers
+        fields = ['username', 'name', 'date_of_b']
+        widgets = {
+            'username': forms.TextInput(attrs={'class': 'form-control'}),
+            'name': forms.TextInput(attrs={'class': 'form-control'}),
+            'date_of_b': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
+        }
+    
+    def clean_username(self):
+        username = self.cleaned_data['username']
+        if CUsers.objects.filter(username=username).exclude(pk=self.instance.pk).exists():
+            raise ValidationError('Пользователь с таким логином уже существует')
+        return username
+
+
 class UserEditForm(forms.ModelForm):
-    """Форма для редактирования пользователя администратором"""
+    """Форма для редактирования пользователя администратором. Роль admin нельзя назначить (защита от создания новых админов)."""
     
     class Meta:
         model = CUsers
@@ -299,6 +316,20 @@ class UserEditForm(forms.ModelForm):
             'role': forms.Select(attrs={'class': 'form-control'}),
             'is_auth': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
         }
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Роль "Администратор" доступна только при редактировании существующего админа
+        if self.instance and self.instance.pk and self.instance.role != 'admin':
+            self.fields['role'].choices = [
+                (r, l) for r, l in CUsers._meta.get_field('role').choices if r != 'admin'
+            ]
+    
+    def clean_role(self):
+        role = self.cleaned_data.get('role')
+        if role == 'admin' and self.instance and self.instance.pk and self.instance.role != 'admin':
+            raise ValidationError('Нельзя назначить роль администратора')
+        return role
     
     def clean_username(self):
         username = self.cleaned_data['username']

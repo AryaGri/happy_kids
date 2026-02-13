@@ -7,14 +7,15 @@ from django.db.models import Q, Sum, Avg, Count
 from django.contrib.auth import logout
 import json
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from collections import defaultdict
 
 from .forms import (
     LoginForm, UserCreateForm, PrescriptionForm, DoctorRegistrationForm,
     ParentRegistrationForm, ChildRegistrationForm, ConnectionCodeForm,
-    DoctorVerificationForm, UserEditForm, ChildAssignForm, DateRangeFilterForm,
-    SubscriptionForm, FeedbackForm, PasswordChangeForm, BulkChildAssignForm
+    DoctorVerificationForm, UserEditForm, ProfileSelfEditForm, ChildAssignForm,
+    DateRangeFilterForm, SubscriptionForm, FeedbackForm, PasswordChangeForm,
+    BulkChildAssignForm
 )
 from .models import (
     CUsers, GameResult, Prescription, DoctorLicense, GameSession,
@@ -104,7 +105,7 @@ def register_doctor_view(request):
     else:
         form = DoctorRegistrationForm()
     
-    return render(request, 'register_doctor.html', {'form': form})
+    return render(request, 'register_doctor.html', {'form': form, 'today': date.today().isoformat()})
 
 
 def register_parent_view(request):
@@ -118,7 +119,7 @@ def register_parent_view(request):
     else:
         form = ParentRegistrationForm()
     
-    return render(request, 'register_parent.html', {'form': form})
+    return render(request, 'register_parent.html', {'form': form, 'today': date.today().isoformat()})
 
 
 def register_child_view(request):
@@ -132,7 +133,7 @@ def register_child_view(request):
     else:
         form = ChildRegistrationForm()
     
-    return render(request, 'register_child.html', {'form': form})
+    return render(request, 'register_child.html', {'form': form, 'today': date.today().isoformat()})
 
 
 # ==================== ПРЕДСТАВЛЕНИЯ ДЛЯ АДМИНИСТРАТОРА ====================
@@ -143,12 +144,12 @@ def admin_dashboard_view(request):
     if request.session.get('user_role') != 'admin':
         return HttpResponseForbidden('Доступ запрещён')
     
-    # Фильтрация по роли
+    # Фильтрация по роли (администраторов не показываем в списке — их нельзя редактировать/создавать)
     role_filter = request.GET.get('role')
+    users = CUsers.objects.exclude(role='admin')
     if role_filter:
-        users = CUsers.objects.filter(role=role_filter).order_by('name')
-    else:
-        users = CUsers.objects.all().order_by('role', 'name')
+        users = users.filter(role=role_filter)
+    users = users.order_by('-created_at', 'name')
     
     # Статистика
     total_users = CUsers.objects.count()
@@ -183,15 +184,30 @@ def admin_verify_licenses_view(request):
     
     licenses = DoctorLicense.objects.all().select_related('user').order_by('-created_at')
     
-    # Фильтры
+    # Фильтр по статусу
     status = request.GET.get('status')
     if status == 'pending':
         licenses = licenses.filter(is_verified=False)
     elif status == 'verified':
         licenses = licenses.filter(is_verified=True)
     
+    # Поиск по ФИО или номеру лицензии
+    search = request.GET.get('search', '').strip()
+    if search:
+        licenses = licenses.filter(
+            Q(user__name__icontains=search) | Q(license_number__icontains=search)
+        )
+    
+    # Пагинация
+    paginator = Paginator(licenses, 15)
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+    
     context = {
-        'licenses': licenses,
+        'licenses': page_obj,
+        'page_obj': page_obj,
+        'status': status,
+        'search': search,
     }
     
     return render(request, 'admin_verify_licenses.html', context)
@@ -202,30 +218,53 @@ def admin_verify_license_detail_view(request, license_id):
     if request.session.get('user_role') != 'admin':
         return HttpResponseForbidden('Доступ запрещён')
     
-    license = get_object_or_404(DoctorLicense, id=license_id)
+    license_obj = get_object_or_404(DoctorLicense, id=license_id)
     admin_id = request.session.get('user_id')
-    admin = CUsers.objects.get(id=admin_id)
+    admin = get_object_or_404(CUsers, id=admin_id, role='admin')
     
     if request.method == 'POST':
-        form = DoctorVerificationForm(request.POST, instance=license, admin=admin)
+        form = DoctorVerificationForm(request.POST, instance=license_obj, admin=admin)
         if form.is_valid():
             form.save()
-            
-            if license.is_verified:
-                messages.success(request, f'Лицензия {license.license_number} подтверждена')
+            # Перезагружаем объект после save
+            license_obj.refresh_from_db()
+            if license_obj.is_verified:
+                messages.success(request, f'Лицензия {license_obj.license_number} подтверждена')
             else:
-                messages.info(request, f'Лицензия {license.license_number} отклонена: {license.rejection_reason}')
-            
+                messages.info(request, f'Лицензия {license_obj.license_number} отклонена')
             return redirect('admin_verify_licenses')
     else:
-        form = DoctorVerificationForm(instance=license)
+        form = DoctorVerificationForm(instance=license_obj)
+    
+    # Текущее решение для отображения в форме (при ошибках — из POST)
+    decision = form.data.get('is_verified') if form.is_bound else str(license_obj.is_verified)
     
     context = {
-        'license': license,
+        'license': license_obj,
         'form': form,
+        'decision': decision,
     }
     
     return render(request, 'admin_verify_license_detail.html', context)
+
+
+def admin_delete_user_view(request, id):
+    """Удаление пользователя (только не-администраторы)"""
+    if request.session.get('user_role') != 'admin':
+        return HttpResponseForbidden('Доступ запрещён')
+    
+    user = get_object_or_404(CUsers, pk=id)
+    if user.role == 'admin':
+        messages.error(request, 'Нельзя удалить администратора')
+        return redirect('admin_dashboard')
+    
+    if request.method == 'POST':
+        name = user.name
+        user.delete()
+        messages.success(request, f'Пользователь {name} удалён')
+        return redirect('admin_dashboard')
+    
+    return render(request, 'admin_delete_user_confirm.html', {'user': user})
 
 
 def admin_bulk_assign_view(request):
@@ -317,10 +356,21 @@ def doctor_dashboard_view(request):
         messages.warning(request, 'Пожалуйста, заполните информацию о лицензии в профиле.')
         return redirect('doctor_profile')
     
-    # Получаем всех детей (пациентов)
-    # Врач может видеть всех детей или только назначенных?
-    # Пока сделаем всех детей
-    patients = CUsers.objects.filter(role='child').order_by('name')
+    # Присоединение пациента по коду
+    if request.method == 'POST' and 'connect_code' in request.POST:
+        code_form = ConnectionCodeForm(data=request.POST, user_role='doctor')
+        if code_form.is_valid():
+            child = code_form.connected_user
+            doctor.patients.add(child)
+            messages.success(request, f'Пациент {child.name} успешно добавлен')
+            return redirect('doctor_dashboard')
+        else:
+            pass  # code_form с ошибками передадим в контекст
+    else:
+        code_form = ConnectionCodeForm(user_role='doctor')
+    
+    # Получаем пациентов врача (добавленных по коду)
+    patients = doctor.patients.all().order_by('name')
     
     # Поиск
     search_query = request.GET.get('search')
@@ -349,6 +399,7 @@ def doctor_dashboard_view(request):
         'total_patients': total_patients,
         'total_prescriptions': total_prescriptions,
         'search_query': search_query,
+        'code_form': code_form,
     }
     
     return render(request, 'doctor_dashboard.html', context)
@@ -428,11 +479,16 @@ def patient_detail_view(request, patient_id):
     else:
         prescription_form = PrescriptionForm()
     
+    # Для графика эмоций (labels + data)
+    emotion_labels = list(emotion_scores.keys())
+    emotion_values = list(emotion_scores.values())
+    
     context = {
         'doctor': doctor,
         'patient': patient,
         'game_results': game_results,
         'emotion_scores': emotion_scores,
+        'emotion_chart_data': json.dumps({'labels': emotion_labels, 'data': emotion_values}),
         'prescriptions': prescriptions,
         'prescription_form': prescription_form,
         'filter_form': form,
@@ -477,9 +533,13 @@ def doctor_analysis_view(request, patient_id):
         profile = analyzer.create_diagnostic_profile(patient.id)
     
     # Получаем все результаты
-    game_results = GameResult.objects.filter(user=patient).order_by('date')
+    game_results = GameResult.objects.filter(user=patient).select_related('session').order_by('date')
     
-    # Анализ по времени
+    # Анализ по времени (маппинг: русское название -> поле модели)
+    EMOTION_TO_FIELD = {
+        'гнев': 'anger', 'скука': 'boredom', 'радость': 'joy',
+        'счастье': 'happiness', 'грусть': 'sorrow', 'любовь': 'love'
+    }
     if len(game_results) >= 2:
         first_result = game_results.first()
         last_result = game_results.last()
@@ -487,8 +547,9 @@ def doctor_analysis_view(request, patient_id):
         # Динамика эмоций
         emotion_dynamics = {}
         for emotion in EMOTIONS:
-            first_val = getattr(first_result, emotion, 0)
-            last_val = getattr(last_result, emotion, 0)
+            field = EMOTION_TO_FIELD.get(emotion, emotion)
+            first_val = getattr(first_result, field, 0)
+            last_val = getattr(last_result, field, 0)
             emotion_dynamics[emotion] = {
                 'first': first_val,
                 'last': last_val,
@@ -497,21 +558,37 @@ def doctor_analysis_view(request, patient_id):
     else:
         emotion_dynamics = {}
     
-    # Поведенческие траектории
+    # Поведенческие траектории (из сессий)
     behavior_trajectories = []
+    seen_sessions = set()
     for result in game_results:
-        if result.behavior_trajectory:
-            behavior_trajectories.append({
-                'date': result.date.isoformat(),
-                'game_type': result.game_type,
-                'trajectory': result.behavior_trajectory
-            })
+        if result.session_id and result.session_id not in seen_sessions:
+            session = result.session
+            if session and session.behavior_trajectory:
+                seen_sessions.add(result.session_id)
+                behavior_trajectories.append({
+                    'date': result.date.isoformat(),
+                    'game_type': result.game_type,
+                    'trajectory': session.behavior_trajectory
+                })
+    
+    # Данные для графика динамики эмоций (по датам)
+    emotion_chart_data = {
+        'dates': [r.date.strftime('%d.%m.%Y') for r in game_results],
+        'гнев': [r.anger for r in game_results],
+        'скука': [r.boredom for r in game_results],
+        'радость': [r.joy for r in game_results],
+        'счастье': [r.happiness for r in game_results],
+        'грусть': [r.sorrow for r in game_results],
+        'любовь': [r.love for r in game_results],
+    }
     
     context = {
         'patient': patient,
         'profile': profile,
         'game_results': game_results,
         'emotion_dynamics': emotion_dynamics,
+        'emotion_chart_data': json.dumps(emotion_chart_data),
         'behavior_trajectories': behavior_trajectories,
         'radar_data': json.dumps(profile.get_radar_data()),
     }
@@ -531,7 +608,7 @@ def parent_dashboard_view(request, user_id):
     
     # Присоединение по коду
     if request.method == 'POST' and 'connect_code' in request.POST:
-        code_form = ConnectionCodeForm(request.POST, user_role='parent')
+        code_form = ConnectionCodeForm(data=request.POST, user_role='parent')
         if code_form.is_valid():
             child = code_form.connected_user
             parent.children.add(child)
@@ -569,6 +646,13 @@ def parent_dashboard_view(request, user_id):
     return render(request, 'parent_dashboard.html', context)
 
 
+def parent_child_detail_view(request, user_id, child_id):
+    """Детальная информация о ребёнке для родителя (URL с user_id)"""
+    if request.session.get('user_id') != user_id:
+        return HttpResponseForbidden('Доступ запрещён')
+    return child_detail_for_parent_view(request, child_id)
+
+
 def child_detail_for_parent_view(request, child_id):
     """Детальная информация о ребёнке для родителя (упрощённая)"""
     parent_id = request.session.get('user_id')
@@ -579,9 +663,11 @@ def child_detail_for_parent_view(request, child_id):
     if not parent.children.filter(id=child.id).exists():
         return HttpResponseForbidden('Это не ваш ребёнок')
     
-    game_results = GameResult.objects.filter(user=child).order_by('-date')[:20]
+    # Родитель видит только агрегированную статистику, не конкретные результаты
+    game_results = GameResult.objects.filter(user=child)
+    games_count = game_results.count()
     
-    # Упрощённые эмоциональные показатели
+    # Упрощённые эмоциональные показатели (агрегированные)
     emotion_scores = {
         'радость': sum(r.joy + r.happiness for r in game_results),
         'грусть': sum(r.sorrow for r in game_results),
@@ -589,9 +675,12 @@ def child_detail_for_parent_view(request, child_id):
         'спокойствие': sum(r.love for r in game_results) - sum(r.boredom for r in game_results),
     }
     
-    # Нормализация
-    total = sum(emotion_scores.values()) or 1
-    emotion_percentages = {k: int(v / total * 100) for k, v in emotion_scores.items()}
+    # Нормализация (спокойствие может быть отрицательным — ограничиваем снизу)
+    total = sum(max(0, v) for v in emotion_scores.values()) or 1
+    emotion_percentages = {
+        k: max(0, int(v / total * 100)) if total > 0 else 0
+        for k, v in emotion_scores.items()
+    }
     
     # Получаем назначения врача
     prescriptions = Prescription.objects.filter(child=child, is_active=True).order_by('-date_created')
@@ -602,8 +691,9 @@ def child_detail_for_parent_view(request, child_id):
     context = {
         'parent': parent,
         'child': child,
-        'game_results': game_results,
+        'games_count': games_count,
         'emotion_percentages': emotion_percentages,
+        'emotion_percentages_json': json.dumps(emotion_percentages),
         'prescriptions': prescriptions,
         'profile': profile,
     }
@@ -615,10 +705,17 @@ def child_detail_for_parent_view(request, child_id):
 
 def game_dashboard_view(request, user_id):
     """Панель ребёнка с выбором игр"""
-    if request.session.get('user_role') != 'child' or request.session.get('user_id') != user_id:
+    session_user_id = request.session.get('user_id')
+    session_user_role = request.session.get('user_role')
+    # Явное приведение к int — сессия может хранить значение в другом типе
+    if session_user_role != 'child' or session_user_id is None or int(session_user_id) != int(user_id):
         return HttpResponseForbidden('Доступ запрещён')
     
     child = get_object_or_404(CUsers, id=user_id, role='child')
+    # Генерируем код подключения, если его ещё нет
+    if not child.connection_code:
+        child.generate_connection_code()
+        child.save()
     
     # Статистика игр
     game_results = GameResult.objects.filter(user=child).order_by('-date')[:10]
@@ -658,6 +755,48 @@ def game_dashboard_view(request, user_id):
 def game_painting_view(request, user_id):
     """Игра 'Раскраска'"""
     child = get_object_or_404(CUsers, id=user_id, role='child')
+    
+    if request.method == 'POST':
+        session_id = request.POST.get('session_id')
+        session = None
+        if session_id:
+            try:
+                session = GameSession.objects.get(id=session_id, user=child)
+                session.end_time = timezone.now()
+                session.completed = True
+                session.save()
+            except GameSession.DoesNotExist:
+                pass
+        
+        # Эмоции из скрытых полей
+        anger = int(request.POST.get('anger', 0) or 0)
+        joy = int(request.POST.get('joy', 0) or 0)
+        sorrow = int(request.POST.get('sorrow', 0) or 0)
+        love = int(request.POST.get('love', 0) or 0)
+        boredom = int(request.POST.get('boredom', 0) or 0)
+        happiness = int(request.POST.get('happiness', 0) or 0)
+        
+        drawing_data = {'color_counts': {}}
+        drawing_base64 = request.POST.get('drawing_data', '')
+        if drawing_base64 and drawing_base64.startswith('data:image'):
+            drawing_data['image_base64'] = drawing_base64
+        
+        result = GameResult(
+            user=child,
+            session=session,
+            game_type='Painting',
+            anger=anger,
+            joy=joy,
+            sorrow=sorrow,
+            love=love,
+            boredom=boredom,
+            happiness=happiness,
+            drawing_data=drawing_data,
+        )
+        result.save()
+        
+        messages.success(request, 'Рисунок сохранён!')
+        return redirect('game_dashboard', user_id=child.id)
     
     # Создаём игровую сессию
     session = GameSession.objects.create(
@@ -750,7 +889,50 @@ def game_painting_save_view(request, user_id):
 
 def game_choice_view(request, user_id):
     """Игра 'Выбор'"""
+    # Проверка: доступ только для ребёнка, играющего под своим аккаунтом
+    session_user_id = request.session.get('user_id')
+    session_user_role = request.session.get('user_role')
+    if session_user_role != 'child' or session_user_id is None or int(session_user_id) != int(user_id):
+        return redirect('login')
+    
     child = get_object_or_404(CUsers, id=user_id, role='child')
+    
+    if request.method == 'POST':
+        session_id = request.POST.get('session_id')
+        session = None
+        if session_id:
+            try:
+                session = GameSession.objects.get(id=session_id, user=child)
+                session.end_time = timezone.now()
+                session.completed = True
+                session.save()
+            except GameSession.DoesNotExist:
+                pass
+        
+        # Маппинг раундов на эмоции: round_1=anger, round_2=boredom, round_3=joy
+        round_1_val = 1 if request.POST.get('round_1') else 0
+        round_2_val = 1 if request.POST.get('round_2') else 0
+        round_3_val = 1 if request.POST.get('round_3') else 0
+        
+        choices = {
+            'round_1': request.POST.get('round_1', ''),
+            'round_2': request.POST.get('round_2', ''),
+            'round_3': request.POST.get('round_3', ''),
+        }
+        
+        result = GameResult(
+            user=child,
+            session=session,
+            game_type='Choice',
+            anger=round_1_val,
+            boredom=round_2_val,
+            joy=round_3_val,
+            choices=choices,
+        )
+        result.save()
+        
+        messages.success(request, 'Результаты сохранены!')
+        return redirect('game_dashboard', user_id=child.id)
     
     # Создаём игровую сессию
     session = GameSession.objects.create(
@@ -826,7 +1008,61 @@ def game_choice_save_view(request, user_id):
 
 def game_dialog_view(request, user_id):
     """Игра 'Диалог'"""
+    # Проверка: доступ только для ребёнка
+    session_user_id = request.session.get('user_id')
+    session_user_role = request.session.get('user_role')
+    if session_user_role != 'child' or session_user_id is None or int(session_user_id) != int(user_id):
+        return redirect('login')
+    
     child = get_object_or_404(CUsers, id=user_id, role='child')
+    
+    if request.method == 'POST':
+        session_id = request.POST.get('session_id')
+        session_obj = None
+        if session_id:
+            try:
+                session_obj = GameSession.objects.get(id=session_id, user=child)
+                session_obj.end_time = timezone.now()
+                session_obj.completed = True
+                session_obj.save()
+            except GameSession.DoesNotExist:
+                pass
+        
+        # Собираем ответы из формы
+        q4_val = request.POST.get('question_4', '')
+        q5_val = request.POST.get('question_5', '')
+        answers = {
+            'question_1': request.POST.get('question_1', '0'),
+            'question_2': request.POST.get('question_2', '0'),
+            'question_3': request.POST.get('question_3', '0'),
+            'question_4': q4_val,
+            'question_4a': '1' if q4_val == 'love' else '0',
+            'question_5': q5_val,
+            'question_5a': '1' if q5_val == 'happy' else '0',
+        }
+        
+        joy = int(request.POST.get('question_1', 0)) + int(request.POST.get('question_3', 0))
+        sorrow = int(request.POST.get('question_2', 0)) + (1 if q5_val == 'sad' else 0)
+        love = 1 if q4_val == 'love' else 0
+        boredom = 1 if q5_val == 'bored' else 0
+        happiness = 1 if q5_val == 'happy' else 0
+        
+        result = GameResult(
+            user=child,
+            session=session_obj,
+            game_type='Dialog',
+            joy=joy,
+            sorrow=sorrow,
+            love=love,
+            anger=0,
+            boredom=boredom,
+            happiness=happiness,
+            dialog_answers=answers,
+        )
+        result.save()
+        
+        messages.success(request, 'Результаты сохранены!')
+        return redirect('game_dashboard', user_id=child.id)
     
     # Создаём игровую сессию
     session = GameSession.objects.create(
@@ -942,15 +1178,16 @@ def profile_edit_view(request):
         return redirect('login')
     
     user = get_object_or_404(CUsers, id=user_id)
+    form_class = ProfileSelfEditForm
     
     if request.method == 'POST':
-        form = UserEditForm(request.POST, instance=user)
+        form = form_class(request.POST, instance=user)
         if form.is_valid():
             form.save()
             messages.success(request, 'Профиль обновлён')
             return redirect('profile')
     else:
-        form = UserEditForm(instance=user)
+        form = form_class(instance=user)
     
     context = {
         'form': form,
@@ -1018,22 +1255,31 @@ def edit_parent_view(request, id):
         return HttpResponseForbidden('Доступ запрещён')
     
     user = get_object_or_404(CUsers, pk=id, role='parent')
-    assigned_children = user.children.filter(parents=user)
-    available_children = CUsers.objects.filter(role='child').exclude(parents=user)
+    assigned_children = user.children.all().order_by('name')
+    available_children = CUsers.objects.filter(role='child').exclude(parents=user).order_by('name')
     
     if request.method == 'POST':
+        # Отвязка ребёнка
+        if request.POST.get('remove_child'):
+            child_id = request.POST.get('remove_child')
+            child = get_object_or_404(CUsers, id=child_id, role='child')
+            user.children.remove(child)
+            messages.success(request, f'Ребёнок {child.name} отвязан')
+            return redirect('edit_parent', id=id)
+        
+        # Привязка ребёнка (обрабатываем отдельно, до валидации формы)
+        if request.POST.get('add_child') and request.POST.get('child_id'):
+            child_id = request.POST.get('child_id')
+            child = get_object_or_404(CUsers, id=child_id, role='child')
+            if not user.children.filter(id=child.id).exists():
+                user.children.add(child)
+                messages.success(request, f'Ребёнок {child.name} добавлен')
+            return redirect('edit_parent', id=id)
+        
         form = UserEditForm(request.POST, instance=user)
         if form.is_valid():
             form.save()
-            
-            # Привязка ребёнка
-            child_id = request.POST.get('child_id')
-            if child_id:
-                child = get_object_or_404(CUsers, id=child_id, role='child')
-                if not user.children.filter(id=child.id).exists():
-                    user.children.add(child)
-                    messages.success(request, f'Ребёнок {child.name} добавлен')
-            
+            messages.success(request, 'Данные сохранены')
             return redirect('admin_dashboard')
     else:
         form = UserEditForm(instance=user)
@@ -1049,13 +1295,32 @@ def edit_parent_view(request, id):
 
 
 def edit_doctor_view(request, id):
-    """Редактирование врача"""
+    """Редактирование врача и привязка пациентов"""
     if request.session.get('user_role') != 'admin':
         return HttpResponseForbidden('Доступ запрещён')
     
     user = get_object_or_404(CUsers, pk=id, role='doctor')
+    assigned_patients = user.patients.all().order_by('name')
+    available_patients = CUsers.objects.filter(role='child').exclude(doctors=user).order_by('name')
     
     if request.method == 'POST':
+        # Добавление пациента
+        if request.POST.get('assign_patient'):
+            patient_id = request.POST.get('patient_id')
+            if patient_id:
+                child = get_object_or_404(CUsers, id=patient_id, role='child')
+                if not user.patients.filter(id=child.id).exists():
+                    user.patients.add(child)
+                    messages.success(request, f'Пациент {child.name} добавлен')
+            return redirect('edit_doctor', id=id)
+        # Удаление пациента
+        if request.POST.get('remove_patient'):
+            patient_id = request.POST.get('remove_patient')
+            child = get_object_or_404(CUsers, id=patient_id, role='child')
+            user.patients.remove(child)
+            messages.success(request, f'Пациент {child.name} отвязан')
+            return redirect('edit_doctor', id=id)
+        
         form = UserEditForm(request.POST, instance=user)
         if form.is_valid():
             form.save()
@@ -1067,9 +1332,12 @@ def edit_doctor_view(request, id):
     context = {
         'form': form,
         'user': user,
+        'doctor': user,
+        'assigned_patients': assigned_patients,
+        'available_patients': available_patients,
     }
     
-    return render(request, 'edit_user.html', context)
+    return render(request, 'edit_doctor.html', context)
 
 
 def generate_connection_code_view(request):

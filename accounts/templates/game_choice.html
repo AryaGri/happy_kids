@@ -25,6 +25,7 @@
 <!-- Форма для выбора картинок -->
 <form method="post" class='form1'>
     {% csrf_token %}
+    <input type="hidden" name="session_id" value="{{ session.id }}">
 
     <div class="round">
         <h2>Раунд 1</h2>
@@ -69,6 +70,7 @@
     </div>
 
     <button type="submit">Сохранить выбор</button>
+    <a href="{% url 'game_dashboard' child.id %}" class="btn btn-secondary ms-2">Назад к дашборду</a>
 </form>
 
 <script>

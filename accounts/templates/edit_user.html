@@ -29,16 +29,20 @@
       <div class="form-group">
         <label for="role">Роль:</label>
         <select name="role" id="role" class="form-control" required>
-          <option value="admin" {% if user.role == 'admin' %}selected{% endif %}>Администратор</option>
+          {% if user.role == 'admin' %}<option value="admin" selected>Администратор</option>{% endif %}
           <option value="doctor" {% if user.role == 'doctor' %}selected{% endif %}>Врач</option>
           <option value="parent" {% if user.role == 'parent' %}selected{% endif %}>Родитель</option>
           <option value="child" {% if user.role == 'child' %}selected{% endif %}>Ребёнок</option>
         </select>
+        <small class="text-muted">Роль администратора нельзя создать или назначить через интерфейс</small>
       </div>
 
       <button type="submit" class="btn btn-primary">Сохранить изменения</button>
     </form>
 
-    <a href="{% url 'admin_dashboard' %}" class="btn btn-secondary mt-3">Назад к дашборду</a>
+    <div class="mt-3">
+        <a href="{% url 'admin_dashboard' %}" class="btn btn-secondary">Назад к дашборду</a>
+        <a href="{% url 'admin_delete_user' user.id %}" class="btn btn-outline-danger ms-2">Удалить пользователя</a>
+    </div>
   </div>
 {% endblock %}

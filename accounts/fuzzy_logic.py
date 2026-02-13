@@ -11,7 +11,7 @@ from collections import Counter
 
 from .models import (
     CUsers, GameResult, GameSession, DiagnosticProfile,
-    FuzzyLinguisticVariable, BehaviorPattern, FuzzyInferenceRule,
+    FuzzyLinguisticVariable, FuzzyMembershipFunction, BehaviorPattern, FuzzyInferenceRule,
     EMOTIONS
 )
 
