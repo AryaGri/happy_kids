@@ -82,8 +82,13 @@
 
     <!-- 3. Назначения врача -->
     <div class="card friendly-card mb-4">
-        <div class="card-header bg-white text-dark py-3">
-            <span class="emotion-emoji">📋</span> Рекомендации специалиста
+        <div class="card-header bg-white text-dark py-3 d-flex justify-content-between align-items-center">
+            <span><span class="emotion-emoji">📋</span> Рекомендации специалиста</span>
+            {% if prescriptions %}
+            <a href="{% url 'parent_download_prescriptions' child.id %}" class="btn btn-sm btn-outline-primary" title="Скачать назначения">
+                <i class="fas fa-download me-1"></i>Скачать
+            </a>
+            {% endif %}
         </div>
         <div class="card-body">
             {% if prescriptions %}

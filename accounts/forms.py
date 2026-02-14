@@ -284,6 +284,39 @@ class DoctorVerificationForm(forms.ModelForm):
         return instance
 
 
+class DoctorLicenseEditForm(forms.ModelForm):
+    """Форма редактирования лицензии врачом (после отклонения или для обновления)"""
+    
+    class Meta:
+        model = DoctorLicense
+        fields = ['license_number', 'license_scan', 'license_file']
+        widgets = {
+            'license_number': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Латиница и цифры, 5–20 символов'}),
+            'license_scan': forms.Textarea(attrs={'class': 'form-control', 'rows': 5, 'placeholder': 'Вставьте текст лицензии или основные данные'}),
+            'license_file': forms.FileInput(attrs={'class': 'form-control'}),
+        }
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['license_file'].required = False
+    
+    def clean_license_number(self):
+        license_number = self.cleaned_data['license_number'].strip().upper()
+        if not re.match(r'^[A-Z0-9]{5,20}$', license_number):
+            raise ValidationError('Неверный формат (латиница и цифры, 5–20 символов)')
+        if DoctorLicense.objects.filter(license_number=license_number).exclude(pk=self.instance.pk).exists():
+            raise ValidationError('Лицензия с таким номером уже зарегистрирована')
+        return license_number
+    
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        instance.rejection_reason = ''  # Сбрасываем причину отказа при повторной подаче
+        instance.is_verified = False    # Требуется повторная проверка
+        if commit:
+            instance.save()
+        return instance
+
+
 class ProfileSelfEditForm(forms.ModelForm):
     """Форма для самостоятельного редактирования профиля (без role, is_auth)"""
     
@@ -498,5 +531,30 @@ class BulkChildAssignForm(forms.Form):
                 parent = CUsers.objects.get(id=parent_id)
                 assigned_ids = parent.children.values_list('id', flat=True)
                 self.fields['children'].queryset = self.fields['children'].queryset.exclude(id__in=assigned_ids)
+            except (ValueError, CUsers.DoesNotExist):
+                pass
+
+
+class BulkDoctorAssignForm(forms.Form):
+    """Форма для массового назначения пациентов врачу"""
+    doctor = forms.ModelChoiceField(
+        label='Врач',
+        queryset=CUsers.objects.filter(role='doctor'),
+        widget=forms.Select(attrs={'class': 'form-control'})
+    )
+    patients = forms.ModelMultipleChoiceField(
+        label='Пациенты (дети)',
+        queryset=CUsers.objects.filter(role='child'),
+        widget=forms.SelectMultiple(attrs={'class': 'form-control', 'size': 10})
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if 'doctor' in self.data:
+            try:
+                doctor_id = int(self.data.get('doctor'))
+                doctor = CUsers.objects.get(id=doctor_id)
+                assigned_ids = doctor.patients.values_list('id', flat=True)
+                self.fields['patients'].queryset = self.fields['patients'].queryset.exclude(id__in=assigned_ids)
             except (ValueError, CUsers.DoesNotExist):
                 pass

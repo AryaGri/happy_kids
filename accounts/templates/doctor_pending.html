@@ -4,6 +4,25 @@
 <div class="container mt-5">
     <div class="row justify-content-center">
         <div class="col-md-8">
+            {% if license and license.rejection_reason %}
+            <div class="card border-danger">
+                <div class="card-header bg-danger text-white">
+                    <h5 class="mb-0"><i class="fas fa-times-circle me-2"></i>Лицензия отклонена</h5>
+                </div>
+                <div class="card-body">
+                    <p class="mb-3">Ваша лицензия была отклонена администратором.</p>
+                    <div class="alert alert-light border">
+                        <strong>Причина отказа:</strong><br>
+                        {{ license.rejection_reason }}
+                    </div>
+                    <p class="mb-3">Вы можете отредактировать данные лицензии и подать заявку на повторную проверку.</p>
+                    <hr>
+                    <a href="{% url 'doctor_license_edit' %}" class="btn btn-primary">Редактировать лицензию</a>
+                    <a href="{% url 'profile' %}" class="btn btn-outline-primary">Профиль</a>
+                    <a href="{% url 'logout' %}" class="btn btn-outline-secondary">Выйти</a>
+                </div>
+            </div>
+            {% else %}
             <div class="card border-warning">
                 <div class="card-header bg-warning text-dark">
                     <h5 class="mb-0"><i class="fas fa-clock me-2"></i>Ожидание проверки лицензии</h5>
@@ -12,10 +31,12 @@
                     <p class="mb-3">Ваша лицензия ещё не проверена администратором. Доступ к панели врача будет открыт после верификации.</p>
                     <p class="text-muted small mb-0">Обратитесь к администратору системы для проверки вашей лицензии.</p>
                     <hr>
-                    <a href="{% url 'profile' %}" class="btn btn-outline-primary">Перейти в профиль</a>
+                    <a href="{% url 'doctor_license_edit' %}" class="btn btn-outline-primary">Редактировать лицензию</a>
+                    <a href="{% url 'profile' %}" class="btn btn-outline-secondary">Профиль</a>
                     <a href="{% url 'logout' %}" class="btn btn-outline-secondary">Выйти</a>
                 </div>
             </div>
+            {% endif %}
         </div>
     </div>
 </div>

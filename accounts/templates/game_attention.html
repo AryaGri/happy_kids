@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% block title %}Внимание — {{ child.name }}{% endblock %}
+{% block extra_css %}
+<style>
+    .attention-field {
+        width: 320px;
+        height: 200px;
+        margin: 0 auto 20px;
+        background: #f8f9fa;
+        border: 3px solid #dee2e6;
+        border-radius: 16px;
+        position: relative;
+        cursor: pointer;
+        overflow: hidden;
+    }
+    .attention-symbol {
+        position: absolute;
+        font-size: 3.5rem;
+        width: 80px;
+        height: 80px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: -40px 0 0 -40px;
+    }
+</style>
+{% endblock %}
+{% block content %}
+<div class="container text-center" style="max-width:400px;">
+    <h4 class="mb-3">👀 Внимание</h4>
+    <p class="text-muted">Нажми, когда увидишь <strong>звёздочку ★</strong>. Не нажимай на круг ○</p>
+    <form method="post" id="gameForm">
+        {% csrf_token %}
+        <input type="hidden" name="session_id" value="{{ session.id }}">
+        <input type="hidden" name="data" id="dataInput">
+        <div id="targetArea" class="attention-field">
+            <div id="symbol" class="attention-symbol" style="display:none;"></div>
+        </div>
+        <button type="submit" class="btn btn-success w-100" id="submitBtn" style="display:none;">Готово!</button>
+    </form>
+    <a href="{% url 'game_dashboard' child.id %}" class="d-block mt-2">← Назад</a>
+</div>
+<script>
+let hits=0, misses=0, falseAlarms=0, reactionTimes=[], round=0, maxRounds=15, targetShown=false, isStar=false, startTime, missTimer;
+const area = document.getElementById('targetArea');
+const symbol = document.getElementById('symbol');
+
+function getRandomPos() {
+    const pad = 50;
+    return {
+        left: pad + Math.random() * (320 - pad * 2),
+        top: pad + Math.random() * (200 - pad * 2)
+    };
+}
+
+function showNext() {
+    symbol.style.display = 'none';
+    symbol.textContent = '';
+    targetShown = false;
+    round++;
+    if (round >= maxRounds) {
+        document.getElementById('submitBtn').style.display = 'block';
+        symbol.style.display = 'flex';
+        symbol.style.left = '50%';
+        symbol.style.top = '50%';
+        symbol.style.margin = '-40px 0 0 -40px';
+        symbol.textContent = 'Готово!';
+        area.onclick = null;
+        return;
+    }
+    const delay = 800 + Math.random()*1200;
+    setTimeout(() => {
+        isStar = Math.random() > 0.65;
+        const pos = getRandomPos();
+        symbol.textContent = isStar ? '★' : '○';
+        symbol.style.left = pos.left + 'px';
+        symbol.style.top = pos.top + 'px';
+        symbol.style.display = 'flex';
+        targetShown = true;
+        if (isStar) startTime = Date.now();
+        missTimer = setTimeout(() => {
+            if (targetShown && isStar) {
+                misses++;
+                document.getElementById('submitBtn').style.display = 'block';
+                symbol.style.display = 'flex';
+                symbol.style.left = '50%';
+                symbol.style.top = '50%';
+                symbol.style.margin = '-40px 0 0 -40px';
+                symbol.textContent = 'Игра окончена';
+                area.onclick = null;
+                return;
+            }
+            targetShown = false;
+            setTimeout(showNext, 500);
+        }, 950);
+    }, delay);
+}
+
+area.onclick = () => {
+    if (!targetShown) return;
+    clearTimeout(missTimer);
+    if (isStar) {
+        hits++;
+        reactionTimes.push(Date.now() - startTime);
+    } else {
+        falseAlarms++;
+        document.getElementById('submitBtn').style.display = 'block';
+        symbol.style.display = 'flex';
+        symbol.style.left = '50%';
+        symbol.style.top = '50%';
+        symbol.style.margin = '-40px 0 0 -40px';
+        symbol.textContent = 'Игра окончена';
+        area.onclick = null;
+        return;
+    }
+    targetShown = false;
+    setTimeout(showNext, 500);
+};
+
+showNext();
+document.getElementById('gameForm').onsubmit = () => {
+    document.getElementById('dataInput').value = JSON.stringify({
+        hits, misses, false_alarms: falseAlarms, reaction_times: reactionTimes
+    });
+};
+</script>
+{% endblock %}

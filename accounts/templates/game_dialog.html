@@ -1,56 +1,177 @@
 {% extends "base.html" %}
+{% load static %}
+{% block title %}Собери картинку — {{ child.name }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .scene-game { max-width: 540px; margin: 0 auto; min-height: 70vh; background: linear-gradient(180deg, #e3f2fd 0%, #e8f5e9 100%); border-radius: 24px; padding: 28px; box-shadow: 0 12px 40px rgba(0,0,0,0.1); }
+    .scene-canvas { min-height: 120px; background: linear-gradient(180deg, #87ceeb 0%, #98fb98 60%); border-radius: 16px; padding: 20px; margin-bottom: 20px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: center; border: 2px dashed #81c784; }
+    .scene-canvas-item { font-size: 2.5rem; animation: popIn 0.3s ease; }
+    @keyframes popIn { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+    .scene-card { background: white; border-radius: 20px; padding: 24px; margin-bottom: 16px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+    .scene-options { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; margin-top: 16px; }
+    .scene-option { width: 80px; height: 80px; border-radius: 16px; background: #f5f5f5; border: 3px solid #e0e0e0; display: flex; align-items: center; justify-content: center; font-size: 2.5rem; cursor: pointer; transition: all 0.2s; }
+    .scene-option:hover { background: #fff8e1; border-color: #ffc107; transform: scale(1.05); }
+    .scene-option.selected { background: linear-gradient(135deg, #4caf50, #8bc34a); border-color: #2e7d32; }
+    .step-dot { width: 8px; height: 8px; border-radius: 50%; background: rgba(0,0,0,0.2); }
+    .step-dot.active { background: #4caf50; transform: scale(1.3); }
+    .step-dot.done { background: #81c784; }
+    .btn-next { background: linear-gradient(135deg, #4caf50, #388e3c); color: white; padding: 14px 24px; border-radius: 14px; border: none; font-weight: 600; cursor: pointer; }
+    .btn-next:disabled { opacity: 0.5; cursor: not-allowed; }
+</style>
+{% endblock %}
+
 {% block content %}
-<form method="POST" class="form1">
-    {% csrf_token %}
-    <input type="hidden" name="session_id" value="{{ session.id }}">
+<div class="scene-game">
+    <h4 class="text-center mb-2" style="color:#1565c0;">🖼️ Собери картинку</h4>
+    <p class="text-center text-muted mb-3">Выбери, что добавить на картинку (можно несколько)</p>
+    <div class="scene-canvas" id="sceneCanvas" title="Твоя картинка"></div>
+    <div class="d-flex justify-content-center gap-2 mb-3" id="stepIndicator"></div>
 
-    <!-- Вопрос 1 -->
-    <div class="question">
-        <p>1. Привет! Как твои дела?</p>
-        <label><input type="radio" name="question_1" value="1"> Отлично</label><br>
-        <label><input type="radio" name="question_1" value="0"> Хорошо</label><br>
-        <label><input type="radio" name="question_1" value="0"> Нормально</label>
+    <form method="POST" id="dialogForm">
+        {% csrf_token %}
+        <input type="hidden" name="session_id" value="{{ session.id }}">
+
+        <div class="scene-card">
+            <div id="promptText" style="font-size:1.1rem;color:#333;text-align:center;"></div>
+            <div class="scene-options" id="sceneOptions"></div>
+        </div>
+
+        <div class="text-center mt-3">
+            <button type="button" class="btn-next" id="nextBtn" disabled>Дальше →</button>
+        </div>
+
+        <div id="submitSection" style="display:none;">
+            <button type="submit" class="btn-next w-100 py-3" id="submitBtn" disabled>
+                <i class="fas fa-check me-2"></i>Готово!
+            </button>
+        </div>
+    </form>
+
+    <div class="text-center mt-3">
+        <a href="{% url 'game_dashboard' child.id %}" id="backToDashboard" class="text-dark">← Назад к играм</a>
     </div>
+</div>
 
-    <!-- Вопрос 2 -->
-    <div class="question">
-        <p>2. Что тебе сегодня снилось?</p>
-        <label><input type="radio" name="question_2" value="0"> Прекрасный сон</label><br>
-        <label><input type="radio" name="question_2" value="1"> Кошмары</label><br>
-        <label><input type="radio" name="question_2" value="0"> Не помню</label>
-    </div>
+<script>
+const ROUNDS = [
+    { prompt: "Что добавить на небо?", opts: ["☀️","🌙","🪐","☁️"], values: ["joy","happiness","boredom","sorrow"] },
+    { prompt: "Что добавить на лужайку?", opts: ["🌳","🌸","🏠","🪨"], values: ["happiness","love","joy","boredom"] },
+    { prompt: "Кого добавить?", opts: ["🐱","🐶","🐰","🦋"], values: ["love","joy","happiness","boredom"] },
+    { prompt: "Что добавить рядом с домом?", opts: ["🚗","🌻","⛲","🎈"], values: ["joy","happiness","love","joy"] },
+    { prompt: "Что добавить на картинку?", opts: ["🌈","🦄","🎪","🏰"], values: ["joy","love","happiness","boredom"] },
+];
+let step = 0;
+let reactionTimes = [];
+let choices = {};  // q1: [{emoji, value}, ...], q2: [...], ...
 
-    <!-- Вопрос 3 -->
-    <div class="question">
-        <p>3. Что ты сегодня делал(а)?</p>
-        <label><input type="radio" name="question_3" value="1"> Играл(а) с друзьями</label><br>
-        <label><input type="radio" name="question_3" value="0"> Смотрел(а) мультики</label><br>
-        <label><input type="radio" name="question_3" value="0"> Ничего</label>
-    </div>
+function shuffle(arr) { for (let i=arr.length-1; i>0; i--) { const j=Math.floor(Math.random()*(i+1)); [arr[i],arr[j]]=[arr[j],arr[i]]; } return arr; }
+function renderSteps() {
+    document.getElementById('stepIndicator').innerHTML = ROUNDS.map((_, i) =>
+        `<span class="step-dot ${i < step ? 'done' : i === step ? 'active' : ''}"></span>`
+    ).join('');
+}
+function renderCanvas() {
+    const all = [];
+    for (let i = 1; i <= ROUNDS.length; i++) {
+        const arr = choices['q' + i] || [];
+        arr.forEach(item => all.push(item.emoji));
+    }
+    const canvas = document.getElementById('sceneCanvas');
+    if (all.length === 0) {
+        canvas.innerHTML = '<span class="text-muted" style="font-size:1rem;">Твоя картинка появится здесь</span>';
+    } else {
+        canvas.innerHTML = all.map(e => `<span class="scene-canvas-item">${e}</span>`).join('');
+    }
+}
 
-    <!-- Вопрос 4 -->
-    <div class="question">
-        <p>4. Хочешь сейчас обнять кого-нибудь или побыть один(одна)?</p>
-        <label><input type="radio" name="question_4" value="love"> Хочу обнимашки</label><br>
-        <label><input type="radio" name="question_4" value="unsure"> Даже не знаю</label><br>
-        <label><input type="radio" name="question_4" value="alone"> Хочу побыть в одиночестве</label>
-    </div>
+function addHiddenInput(name, value) {
+    let inp = document.querySelector(`input[name="${name}"]`);
+    if (!inp) {
+        inp = document.createElement('input');
+        inp.type = 'hidden';
+        inp.name = name;
+        document.getElementById('dialogForm').appendChild(inp);
+    }
+    inp.value = value;
+}
 
-    <!-- Вопрос 5 -->
-    <div class="question">
-        <p>5. Сегодня было больше весёлых или скучных моментов?</p>
-        <label><input type="radio" name="question_5" value="happy"> Весёлых (Счастье)</label><br>
-        <label><input type="radio" name="question_5" value="sad"> Скучных (Грусть)</label><br>
-        <label><input type="radio" name="question_5" value="bored"> Одинаково (Скука)</label>
-    </div>
+function showRound(idx) {
+    const startTime = Date.now();
+    const r = ROUNDS[idx];
+    document.getElementById('promptText').textContent = r.prompt;
+    const order = shuffle([0,1,2,3]);
+    const currentChoices = choices['q' + (idx+1)] || [];
+    const selectedEmojis = new Set(currentChoices.map(c => c.emoji));
 
-    <div class="question">
-        <p>Пока-пока! 👋</p>
-    </div>
+    const optsHtml = order.map(i => {
+        const emoji = r.opts[i];
+        const val = r.values[i];
+        const sel = selectedEmojis.has(emoji) ? ' selected' : '';
+        return `<div class="scene-option${sel}" data-value="${val}" data-emoji="${emoji}">${emoji}</div>`;
+    }).join('');
+    document.getElementById('sceneOptions').innerHTML = optsHtml;
 
-    <button type="submit">Сохранить ответы</button>
-</form>
+    document.getElementById('sceneOptions').querySelectorAll('.scene-option').forEach(btn => {
+        btn.onclick = () => {
+            if (!reactionTimes[idx]) reactionTimes[idx] = Date.now() - startTime;
+            const emoji = btn.dataset.emoji;
+            const val = btn.dataset.value;
+            let arr = choices['q' + (idx+1)] || [];
+            const idxInArr = arr.findIndex(x => x.emoji === emoji);
+            if (idxInArr >= 0) {
+                arr = arr.filter((_, i) => i !== idxInArr);
+                btn.classList.remove('selected');
+            } else {
+                arr = [...arr, { emoji, value: val }];
+                btn.classList.add('selected');
+            }
+            choices['q' + (idx+1)] = arr;
+            renderCanvas();
+            document.getElementById('nextBtn').disabled = arr.length === 0;
+            if (idx === ROUNDS.length - 1) document.getElementById('submitBtn').disabled = arr.length === 0;
+        };
+    });
 
-<a href="{% url 'game_dashboard' child.id %}" class="btn btn-secondary mt-3">Назад к дашборду</a>
-  <br>
+    document.getElementById('nextBtn').style.display = idx < ROUNDS.length - 1 ? 'block' : 'none';
+    document.getElementById('submitSection').style.display = idx === ROUNDS.length - 1 ? 'block' : 'none';
+    document.getElementById('nextBtn').disabled = currentChoices.length === 0;
+    const sb = document.getElementById('submitBtn');
+    if (sb) sb.disabled = idx === ROUNDS.length - 1 && currentChoices.length === 0;
+    renderSteps();
+    renderCanvas();
+}
+
+document.getElementById('nextBtn').onclick = () => {
+    step++;
+    showRound(step);
+};
+
+function prepareDialogForm() {
+    const answers = {};
+    for (let i = 1; i <= ROUNDS.length; i++) {
+        const arr = choices['q' + i] || [];
+        answers['q' + i] = arr.map(x => x.value);
+    }
+    addHiddenInput('dialog_answers', JSON.stringify(answers));
+    let rtInput = document.querySelector('input[name="reaction_times"]');
+    if (!rtInput) {
+        rtInput = document.createElement('input');
+        rtInput.type = 'hidden';
+        rtInput.name = 'reaction_times';
+        document.getElementById('dialogForm').appendChild(rtInput);
+    }
+    rtInput.value = JSON.stringify(reactionTimes);
+}
+
+document.getElementById('dialogForm').onsubmit = () => { prepareDialogForm(); };
+
+document.getElementById('backToDashboard').addEventListener('click', function(e) {
+    e.preventDefault();
+    prepareDialogForm();
+    document.getElementById('dialogForm').submit();
+});
+
+showRound(0);
+</script>
 {% endblock %}

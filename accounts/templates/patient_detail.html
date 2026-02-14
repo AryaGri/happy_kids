@@ -24,8 +24,8 @@
         <div class="card-header bg-primary text-white">
             <h5 class="mb-0"><i class="fas fa-chart-radar me-2"></i>Диагностический профиль</h5>
         </div>
-        <div class="card-body">
-            <div class="radar-chart-container" style="position: relative; height: 280px;">
+        <div class="card-body d-flex justify-content-center align-items-center">
+            <div class="radar-chart-container" style="position: relative; height: 520px; width: 100%; max-width: 700px; margin: 0 auto;">
                 <canvas id="radarChart"></canvas>
             </div>
         </div>
@@ -83,41 +83,121 @@
     <div class="tab-content" id="patientTabsContent">
         <!-- Вкладка: Результаты игр -->
         <div class="tab-pane fade {% if not prescription_form.errors %}show active{% endif %}" id="games" role="tabpanel">
-            <div class="card">
+            <div class="card mb-4">
                 <div class="card-body">
                     <div class="mb-3">
                         <canvas id="emotionChart" height="100"></canvas>
                     </div>
-                    <div class="table-responsive">
-                        <table class="table table-bordered table-hover">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>Игра</th>
-                                    <th>Дата</th>
-                                    <th>Результат</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for game_result in game_results %}
-                                <tr>
-                                    <td>{{ game_result.game_type }}</td>
-                                    <td>{{ game_result.date|date:"d.m.Y H:i" }}</td>
-                                    <td>
-                                        <small>
-                                            Радость: {{ game_result.joy }} Грусть: {{ game_result.sorrow }} |
-                                            Любовь: {{ game_result.love }} Гнев: {{ game_result.anger }} |
-                                            Счастье: {{ game_result.happiness }} Скука: {{ game_result.boredom }}
-                                        </small>
-                                    </td>
-                                </tr>
-                                {% empty %}
-                                <tr><td colspan="3" class="text-muted text-center">Нет результатов</td></tr>
+                </div>
+            </div>
+            <h5 class="mb-3">Все прохождения игр</h5>
+            {% for game_result in game_results %}
+            <div class="card mb-3 game-result-card">
+                <div class="card-header d-flex justify-content-between align-items-center py-2">
+                    <div>
+                        <strong>{{ game_result.get_game_type_display }}</strong>
+                        <span class="text-muted ms-2">{{ game_result.date|date:"d.m.Y H:i" }}</span>
+                    </div>
+                    <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#result-{{ game_result.id }}">
+                        <i class="fas fa-chevron-down"></i> Подробнее
+                    </button>
+                </div>
+                <div class="collapse" id="result-{{ game_result.id }}">
+                    <div class="card-body border-top">
+                        {% if game_result.game_type == 'Painting' %}
+                            {% if game_result.final_image %}
+                            <p class="mb-2"><strong>Рисунок:</strong> <small class="text-muted">(нажмите для увеличения)</small></p>
+                            <span role="button" data-bs-toggle="modal" data-bs-target="#imageModal-{{ game_result.id }}" style="cursor: pointer;">
+                                <img src="{{ game_result.final_image.url }}" alt="Рисунок" class="img-thumbnail" style="max-height: 200px;">
+                            </span>
+                            <div class="modal fade" id="imageModal-{{ game_result.id }}" tabindex="-1">
+                                <div class="modal-dialog modal-lg modal-dialog-centered">
+                                    <div class="modal-content">
+                                        <div class="modal-header">
+                                            <h5 class="modal-title">Рисунок — {{ game_result.date|date:"d.m.Y H:i" }}</h5>
+                                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                        </div>
+                                        <div class="modal-body text-center p-0">
+                                            <img src="{{ game_result.final_image.url }}" alt="Рисунок" class="img-fluid" style="max-height: 70vh;">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            {% elif game_result.drawing_data and game_result.drawing_data.image_base64 %}
+                            <p class="mb-2"><strong>Рисунок:</strong> <small class="text-muted">(нажмите для увеличения)</small></p>
+                            <span role="button" data-bs-toggle="modal" data-bs-target="#imageModal-{{ game_result.id }}" style="cursor: pointer;">
+                                <img src="{{ game_result.drawing_data.image_base64 }}" alt="Рисунок" class="img-thumbnail" style="max-height: 200px;">
+                            </span>
+                            <div class="modal fade" id="imageModal-{{ game_result.id }}" tabindex="-1">
+                                <div class="modal-dialog modal-lg modal-dialog-centered">
+                                    <div class="modal-content">
+                                        <div class="modal-header">
+                                            <h5 class="modal-title">Рисунок — {{ game_result.date|date:"d.m.Y H:i" }}</h5>
+                                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                        </div>
+                                        <div class="modal-body text-center p-0">
+                                            <img src="{{ game_result.drawing_data.image_base64 }}" alt="Рисунок" class="img-fluid" style="max-height: 70vh;">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            {% else %}
+                            <p class="text-muted mb-0">Рисунок не сохранён</p>
+                            {% endif %}
+                        {% elif game_result.game_type == 'Dialog' %}
+                            <p class="mb-2"><strong>Ответы на вопросы:</strong></p>
+                            {% if game_result.dialog_answers %}
+                            <ul class="list-unstyled mb-0">
+                                {% for q, ans in game_result.dialog_answers.items %}
+                                {% if q != 'question_4a' and q != 'question_5a' %}
+                                <li class="mb-1">
+                                    <strong>{% if q == 'question_2_followup' %}Рассказ про сон:{% elif q == 'question_3_followup' %}Рисовать/читать:{% elif q == 'question_4_followup' %}Часто одному:{% elif q == 'question_5_followup' %}Что расстроило:{% else %}{{ q }}:{% endif %}</strong>
+                                    {{ ans|default:"—" }}
+                                </li>
+                                {% endif %}
                                 {% endfor %}
-                            </tbody>
-                        </table>
+                            </ul>
+                            {% else %}
+                            <p class="text-muted mb-0">Ответы не сохранены</p>
+                            {% endif %}
+                        {% elif game_result.game_type == 'Choice' or game_result.game_type == 'EmotionMatch' %}
+                            <p class="mb-2"><strong>Ответы по сценариям:</strong></p>
+                            {% if game_result.choices %}
+                            <ul class="list-unstyled mb-0">
+                                {% for round_name, choice in game_result.choices.items %}
+                                <li class="mb-2">
+                                    {% if choice.question %}
+                                    <strong>{{ choice.question }}</strong><br>
+                                    <span class="text-success">→ {{ choice.selected|default:"—" }}</span>
+                                    {% else %}
+                                    <strong>{{ round_name }}:</strong> {{ choice|default:"—" }}
+                                    {% endif %}
+                                </li>
+                                {% endfor %}
+                            </ul>
+                            {% else %}
+                            <p class="text-muted mb-0">Выбор не сохранён</p>
+                            {% endif %}
+                            {% if game_result.game_type == 'EmotionMatch' and game_result.performance_metrics %}
+                            <p class="mb-0 mt-2"><strong>Результат:</strong> {{ game_result.performance_metrics.correct }}/{{ game_result.performance_metrics.total }}</p>
+                            {% endif %}
+                        {% elif game_result.game_type == 'Memory' or game_result.game_type == 'Puzzle' or game_result.game_type == 'Sequence' or game_result.game_type == 'EmotionFace' or game_result.game_type == 'Attention' or game_result.game_type == 'GoNoGo' or game_result.game_type == 'Sort' or game_result.game_type == 'Pattern' %}
+                            <p class="mb-2"><strong>Результаты:</strong></p>
+                            {% if game_result.performance_metrics %}
+                            <ul class="list-unstyled mb-0">
+                                {% for key, val in game_result.performance_metrics.items %}
+                                <li class="mb-1"><strong>{{ key }}:</strong> {{ val }}</li>
+                                {% endfor %}
+                            </ul>
+                            {% endif %}
+                            {% if game_result.mistakes %}<p class="mb-0"><strong>Ошибок:</strong> {{ game_result.mistakes }}</p>{% endif %}
+                        {% endif %}
                     </div>
                 </div>
             </div>
+            {% empty %}
+            <p class="text-muted">Нет результатов игр</p>
+            {% endfor %}
         </div>
 
         <!-- Вкладка: Назначения -->
@@ -198,6 +278,24 @@
 
         <!-- Вкладка: Анализ -->
         <div class="tab-pane fade" id="analysis" role="tabpanel">
+            {% if detected_diagnoses %}
+            <div class="card mb-4">
+                <div class="card-header bg-warning text-dark">
+                    <h5 class="mb-0"><i class="fas fa-stethoscope me-2"></i>Выявленные состояния</h5>
+                </div>
+                <div class="card-body">
+                    {% for diag in detected_diagnoses %}
+                    <div class="mb-3 pb-3 {% if not forloop.last %}border-bottom{% endif %}">
+                        <h6 class="text-primary">{{ diag.name }}</h6>
+                        <p class="mb-1">{{ diag.default_recommendations }}</p>
+                        {% if diag.default_prescription_text %}
+                        <p class="mb-0 small text-muted"><strong>Назначение по умолчанию:</strong> {{ diag.default_prescription_text }}</p>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
             <div class="card mb-4">
                 <div class="card-header bg-info text-white">
                     <h5 class="mb-0"><i class="fas fa-brain me-2"></i>Поведенческие паттерны</h5>
@@ -233,7 +331,7 @@
                 </div>
                 <div class="card-body">
                     {% if profile.recommendations %}
-                    <div class="recommendations-text">{{ profile.recommendations|linebreaks }}</div>
+                    <div class="recommendations-text" style="white-space: pre-line;">{{ profile.recommendations }}</div>
                     {% else %}
                     <p class="text-muted mb-0">Рекомендации не сформированы</p>
                     {% endif %}
@@ -292,6 +390,8 @@ document.addEventListener('DOMContentLoaded', function() {
             }]
         },
         options: {
+            responsive: true,
+            maintainAspectRatio: true,
             scales: { r: { beginAtZero: true, max: 100 } },
             plugins: { legend: { display: false } }
         }
@@ -326,5 +426,4 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 </script>
-{% endblock %}
 {% endblock %}

@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Найди пару — {{ child.name }}{% endblock %}
+{% block content %}
+<div class="container" style="max-width:500px;">
+    <h4 class="text-center mb-3">🔷 Найди пару</h4>
+    <p class="text-center text-muted">Выбери такую же фигуру</p>
+    <form method="post" id="gameForm">
+        {% csrf_token %}
+        <input type="hidden" name="session_id" value="{{ session.id }}">
+        <input type="hidden" name="data" id="dataInput">
+        <div class="card p-4 mb-3">
+            <div class="text-center mb-3" id="shapeDisplay" style="font-size:4rem;"></div>
+            <div class="d-flex flex-wrap gap-2 justify-content-center" id="options"></div>
+        </div>
+        <button type="submit" class="btn btn-success w-100" id="submitBtn" style="display:none;">Готово!</button>
+    </form>
+    <a href="{% url 'game_dashboard' child.id %}" class="d-block text-center mt-2">← Назад</a>
+</div>
+<script>
+const SHAPES = ['★','◆','●','▲','■','♦','♥','♠'];
+const TASKS = SHAPES.map((s, i) => ({ shape: s, correct: 0 }));
+let idx = 0, correct = 0, reactionTimes = [];
+let TASKS_SHUFFLED = [];
+
+function shuffle(arr) { for (let i=arr.length-1; i>0; i--) { const j=Math.floor(Math.random()*(i+1)); [arr[i],arr[j]]=[arr[j],arr[i]]; } return arr; }
+
+function show() {
+    const t = TASKS_SHUFFLED[idx];
+    const others = SHAPES.filter(x => x !== t.shape);
+    const opts = shuffle([t.shape, others[0], others[1], others[2]]);
+    const realCorrect = opts.indexOf(t.shape);
+    document.getElementById('shapeDisplay').textContent = t.shape;
+    document.getElementById('options').innerHTML = opts.map((o, i) =>
+        `<button type="button" class="btn btn-outline-primary" data-i="${i}" style="font-size:2rem">${o}</button>`
+    ).join('');
+    const start = Date.now();
+    document.getElementById('options').querySelectorAll('button').forEach(btn => {
+        btn.onclick = () => {
+            reactionTimes.push(Date.now() - start);
+            const isCorrect = parseInt(btn.dataset.i) === realCorrect;
+            if (isCorrect) correct++;
+            idx++;
+            if (!isCorrect || idx >= TASKS_SHUFFLED.length) {
+                document.getElementById('submitBtn').style.display = 'block';
+                document.getElementById('options').innerHTML = isCorrect ? '<p class="text-success">Готово!</p>' : '<p class="text-muted">Игра окончена</p>';
+            } else show();
+        };
+    });
+}
+
+TASKS_SHUFFLED = shuffle([...TASKS]);
+show();
+document.getElementById('gameForm').onsubmit = () => {
+    document.getElementById('dataInput').value = JSON.stringify({
+        correct, total: TASKS_SHUFFLED.length, reaction_times: reactionTimes
+    });
+};
+</script>
+{% endblock %}

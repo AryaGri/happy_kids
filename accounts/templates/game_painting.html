@@ -1,157 +1,512 @@
 {% extends "base.html" %}
+{% load static %}
+{% block title %}Игра «Раскраска» — {{ child.name }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .painting-game {
+        max-width: 650px;
+        margin: 0 auto;
+        background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+        border-radius: 20px;
+        padding: 30px;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.08);
+    }
+    .painting-header {
+        text-align: center;
+        margin-bottom: 25px;
+    }
+    .painting-header h1 {
+        color: #1565c0;
+        font-size: 1.5rem;
+    }
+    .painting-header .avatar {
+        width: 70px;
+        height: 70px;
+        background: linear-gradient(135deg, #42a5f5, #1976d2);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 12px;
+        font-size: 2rem;
+    }
+    .canvas-card {
+        background: white;
+        border-radius: 16px;
+        padding: 20px;
+        margin-bottom: 20px;
+        box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+        border-left: 4px solid #42a5f5;
+        display: flex;
+        justify-content: center;
+    }
+    .canvas-wrapper {
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: inset 0 0 0 3px #e3f2fd;
+    }
+    #paintingCanvas {
+        display: block;
+        touch-action: none;
+        border-radius: 8px;
+    }
+    .colors-card {
+        background: white;
+        border-radius: 16px;
+        padding: 20px;
+        margin-bottom: 20px;
+        box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+        border-left: 4px solid #42a5f5;
+    }
+    .colors-card p {
+        margin-bottom: 12px;
+        font-weight: 600;
+        color: #37474f;
+    }
+    .color-palette {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+    }
+    .color-button {
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+        border: 3px solid transparent;
+        cursor: pointer;
+        transition: all 0.2s;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    }
+    .color-button:hover {
+        transform: scale(1.1);
+        border-color: #333;
+    }
+    .color-button.active {
+        border-color: #1565c0;
+        box-shadow: 0 0 0 3px rgba(21, 101, 192, 0.3);
+    }
+    .eraser-button {
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+        border: 3px solid transparent;
+        cursor: pointer;
+        transition: all 0.2s;
+        background: #f5f5f5;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.2rem;
+    }
+    .eraser-button:hover { transform: scale(1.1); border-color: #333; }
+    .eraser-button.active {
+        border-color: #1565c0;
+        box-shadow: 0 0 0 3px rgba(21, 101, 192, 0.3);
+        background: #e3f2fd;
+    }
+    .tool-button {
+        width: 48px;
+        height: 48px;
+        border-radius: 12px;
+        border: 3px solid transparent;
+        cursor: pointer;
+        transition: all 0.2s;
+        background: #f5f5f5;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.2rem;
+    }
+    .tool-button:hover { transform: scale(1.1); border-color: #333; }
+    .tool-button.active {
+        border-color: #1565c0;
+        box-shadow: 0 0 0 3px rgba(21, 101, 192, 0.3);
+        background: #e3f2fd;
+    }
+    .brush-size-btn {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        border: 2px solid #ccc;
+        cursor: pointer;
+        transition: all 0.2s;
+        background: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.9rem;
+        font-weight: 600;
+    }
+    .brush-size-btn:hover { border-color: #1565c0; }
+    .brush-size-btn.active {
+        border-color: #1565c0;
+        background: #e3f2fd;
+    }
+    .btn-submit-painting {
+        background: linear-gradient(135deg, #42a5f5, #1565c0);
+        color: white !important;
+        border: none;
+        padding: 14px 32px;
+        border-radius: 12px;
+        font-size: 1.1rem;
+        font-weight: 600;
+        width: 100%;
+    }
+    .btn-submit-painting:hover {
+        background: linear-gradient(135deg, #1976d2, #0d47a1);
+        color: white !important;
+    }
+</style>
+{% endblock %}
 
 {% block content %}
-<h1>Игра: Раскраска</h1>
+<div class="painting-game">
+    <div class="painting-header">
+        <div class="avatar">🎨</div>
+        <h1>Рисование</h1>
+        <p class="text-muted mb-0" id="promptText">Нарисуй дом</p>
+    </div>
 
-<p>Выберите цвет и рисуйте на холсте!</p>
+    <div class="canvas-card">
+        <div class="canvas-wrapper">
+            <canvas id="paintingCanvas" width="500" height="500"></canvas>
+        </div>
+    </div>
 
-<!-- Контейнер с холстом -->
-<div class="canvas-wrapper" style="display: inline-block;">
-<canvas id="paintingCanvas" width="500" height="500" style="border: 1px solid #000; touch-action: none;"></canvas>
+    <div class="colors-card">
+        <p>Инструменты и размер:</p>
+        <div class="color-palette mb-3">
+            <button type="button" class="tool-button active" id="brushBtn" title="Кисточка"><i class="fas fa-paint-brush"></i></button>
+            <button type="button" class="tool-button" id="undoBtn" title="Шаг назад"><i class="fas fa-undo"></i></button>
+            <button type="button" class="tool-button" id="bucketBtn" title="Заливка (лейка)"><i class="fas fa-fill-drip"></i></button>
+            <button type="button" class="eraser-button" id="eraserBtn" title="Ластик"><i class="fas fa-eraser"></i></button>
+            <span class="align-self-center text-muted small">Кисть:</span>
+            <button type="button" class="brush-size-btn active" data-size="3" title="Тонкая">3</button>
+            <button type="button" class="brush-size-btn" data-size="6" title="Средняя">6</button>
+            <button type="button" class="brush-size-btn" data-size="12" title="Толстая">12</button>
+            <button type="button" class="brush-size-btn" data-size="24" title="Толстая">24</button>
+        </div>
+        <p>Палитра цветов:</p>
+        <div class="color-palette">
+            <button type="button" class="color-button active" data-emotion="joy" data-color="red" style="background: #ef5350;"></button>
+            <button type="button" class="color-button" data-emotion="love" data-color="pink" style="background: #f8bbd0;"></button>
+            <button type="button" class="color-button" data-emotion="happiness" data-color="beige" style="background: #f5deb3;"></button>
+            <button type="button" class="color-button" data-emotion="boredom" data-color="brown" style="background: #8b4513;"></button>
+            <button type="button" class="color-button" data-emotion="joy" data-color="orange" style="background: #ff9800;"></button>
+            <button type="button" class="color-button" data-emotion="joy" data-color="yellow" style="background: #ffeb3b;"></button>
+            <button type="button" class="color-button" data-emotion="happiness" data-color="green" style="background: #66bb6a;"></button>
+            <button type="button" class="color-button" data-emotion="sorrow" data-color="blue" style="background: #42a5f5;"></button>
+            <button type="button" class="color-button" data-emotion="love" data-color="purple" style="background: #ab47bc;"></button>
+            <button type="button" class="color-button" data-emotion="anger" data-color="black" style="background: #37474f;"></button>
+        </div>
+    </div>
+
+    <form method="post" id="paintingForm">
+        {% csrf_token %}
+        <input type="hidden" name="session_id" value="{{ session.id }}">
+        <input type="hidden" name="drawing_data" id="drawingData" value="">
+        <input type="hidden" name="anger" id="anger" value="0">
+        <input type="hidden" name="joy" id="joy" value="0">
+        <input type="hidden" name="sorrow" id="sorrow" value="0">
+        <input type="hidden" name="love" id="love" value="0">
+        <input type="hidden" name="boredom" id="boredom" value="0">
+        <input type="hidden" name="happiness" id="happiness" value="0">
+        <div class="d-flex gap-2">
+            <button type="button" class="btn btn-outline-secondary" id="backBtn" style="display:none;">
+                <i class="fas fa-arrow-left me-2"></i>Назад
+            </button>
+            <button type="button" class="btn btn-submit-painting flex-grow-1" id="nextBtn">
+                <i class="fas fa-arrow-right me-2"></i>Дальше
+            </button>
+            <button type="submit" class="btn btn-submit-painting flex-grow-1" id="submitBtn" style="display:none;">
+                <i class="fas fa-save me-2"></i>Сохранить
+            </button>
+        </div>
+    </form>
+
+    <div class="text-center mt-3">
+        <a href="{% url 'game_dashboard' child.id %}" id="backToDashboard" class="text-muted text-decoration-none">
+            <i class="fas fa-arrow-left me-1"></i>Назад к играм
+        </a>
+    </div>
 </div>
-
-<div>
-    <!-- Кнопки для выбора цвета -->
-    <button type="button" class="color-button" data-emotion="anger" data-color="красная" style="background-color: red;">Красная</button>
-    <button type="button" class="color-button" data-emotion="joy" data-color="оранжевая" style="background-color: orange;">Оранжевая </button>
-    <button type="button" class="color-button" data-emotion="joy" data-color="жёлтая" style="background-color: yellow;">Жёлтая </button>
-    <button type="button" class="color-button" data-emotion="happiness" data-color="зелёная" style="background-color: green;">Зелёная </button>
-    <button type="button" class="color-button" data-emotion="sorrow" data-color="синяя" style="background-color: blue;">Синяя</button>
-    <button type="button" class="color-button" data-emotion="love" data-color="фиолетовая" style="background-color: purple;">Фиолетовая</button>
-</div>
-
-<form method="post" id="paintingForm" class='form1'>
-    {% csrf_token %}
-    <input type="hidden" name="session_id" value="{{ session.id }}">
-    <input type="hidden" name="drawing_data" id="drawingData" value="">
-    <!-- Скрытые поля для передачи баллов на сервер -->
-    <input type="hidden" name="anger" id="anger" value="0">
-    <input type="hidden" name="joy" id="joy" value="0">
-    <input type="hidden" name="sorrow" id="sorrow" value="0">
-    <input type="hidden" name="love" id="love" value="0">
-    <input type="hidden" name="boredom" id="boredom" value="0">
-    <input type="hidden" name="happiness" id="happiness" value="0">
-    <button type="submit" class="btn btn-primary mt-3">Сохранить рисунок</button>
-    <a href="{% url 'game_dashboard' child.id %}" class="btn btn-secondary mt-3">Назад к дашборду</a>
-</form>
-
-
-
 
 <script>
-// Инициализация холста
 const canvas = document.getElementById('paintingCanvas');
 const ctx = canvas.getContext('2d');
-let currentColor = 'black';
+let currentColor = '#ef5350';
+let lastColorName = 'red';
+let isEraser = false;
+let isBucket = false;
+let brushSize = 6;
 let painting = false;
+const history = [];
+const maxHistory = 30;
+const PROMPTS = ['Нарисуй дом', 'Нарисуй семью', 'Нарисуй странное животное'];
+let promptIdx = 0;
+const drawingsData = [];
 
-// Корректное преобразование координат (учёт масштаба и скролла)
+ctx.fillStyle = 'white';
+ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+function saveState() {
+    if (history.length >= maxHistory) history.shift();
+    history.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
+}
+function undo() {
+    if (history.length === 0) return;
+    ctx.putImageData(history.pop(), 0, 0);
+}
+
 function getCanvasCoords(e) {
     const rect = canvas.getBoundingClientRect();
     const scaleX = canvas.width / rect.width;
     const scaleY = canvas.height / rect.height;
-    const x = (e.clientX - rect.left) * scaleX;
-    const y = (e.clientY - rect.top) * scaleY;
-    return { x, y };
+    return { x: (e.clientX - rect.left) * scaleX, y: (e.clientY - rect.top) * scaleY };
 }
-
 function getTouchCoords(e) {
-    const touch = e.touches[0] || e.changedTouches[0];
+    const t = e.touches[0] || e.changedTouches[0];
     const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-    return {
-        x: (touch.clientX - rect.left) * scaleX,
-        y: (touch.clientY - rect.top) * scaleY
-    };
+    const scaleX = canvas.width / rect.width, scaleY = canvas.height / rect.height;
+    return { x: (t.clientX - rect.left) * scaleX, y: (t.clientY - rect.top) * scaleY };
 }
-
 function drawAt(x, y) {
-    ctx.lineWidth = 5;
+    ctx.lineWidth = isEraser ? brushSize * 2 : brushSize;
     ctx.lineCap = 'round';
-    ctx.strokeStyle = currentColor;
+    if (isEraser) {
+        ctx.globalCompositeOperation = 'destination-out';
+        ctx.strokeStyle = 'rgba(0,0,0,1)';
+    } else {
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.strokeStyle = currentColor;
+    }
     ctx.lineTo(x, y);
     ctx.stroke();
     ctx.beginPath();
     ctx.moveTo(x, y);
+    if (isEraser) ctx.globalCompositeOperation = 'source-over';
 }
 
-canvas.addEventListener('mousedown', (e) => {
-    painting = true;
-    const { x, y } = getCanvasCoords(e);
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    drawAt(x, y);
-});
-
-canvas.addEventListener('mouseup', () => {
-    painting = false;
-    ctx.beginPath();
-});
-
-canvas.addEventListener('mouseleave', () => { painting = false; ctx.beginPath(); });
-
-canvas.addEventListener('mousemove', (e) => {
-    if (!painting) return;
-    const { x, y } = getCanvasCoords(e);
-    drawAt(x, y);
-});
-
-// Поддержка сенсорных экранов
-canvas.addEventListener('touchstart', (e) => {
-    e.preventDefault();
-    painting = true;
-    const { x, y } = getTouchCoords(e);
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-});
-
-canvas.addEventListener('touchmove', (e) => {
-    e.preventDefault();
-    if (!painting) return;
-    const { x, y } = getTouchCoords(e);
-    drawAt(x, y);
-});
-
-canvas.addEventListener('touchend', (e) => {
-    e.preventDefault();
-    painting = false;
-    ctx.beginPath();
-});
-
-// Обработка выбора цвета
-document.querySelectorAll('.color-button').forEach(button => {
-    button.addEventListener('click', function() {
-        const emotion = this.getAttribute('data-emotion');  // Эмоция, которая соответствует цвету
-        const color = this.getAttribute('data-color');     // Сам цвет
-
-        // Устанавливаем цвет для рисования
-        if (color === 'красная') {
-            currentColor = 'red';
-        } else if (color === 'оранжевая') {
-            currentColor = 'orange';
-        } else if (color === 'жёлтая') {
-            currentColor = 'yellow';
-        } else if (color === 'зелёная') {
-            currentColor = 'green';
-        } else if (color === 'синяя') {
-            currentColor = 'blue';
-        } else if (color === 'фиолетовая') {
-            currentColor = 'purple';
+function hexToRgba(hex) {
+    const r = parseInt(hex.slice(1,3), 16), g = parseInt(hex.slice(3,5), 16), b = parseInt(hex.slice(5,7), 16);
+    return [r, g, b];
+}
+function matchColor(pix, r, g, b, tolerance) {
+    return Math.abs(pix[0]-r)<=tolerance && Math.abs(pix[1]-g)<=tolerance && Math.abs(pix[2]-b)<=tolerance;
+}
+function floodFill(startX, startY, fillColor) {
+    const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const data = imgData.data;
+    const startIdx = (Math.floor(startY) * canvas.width + Math.floor(startX)) * 4;
+    const [r0, g0, b0] = [data[startIdx], data[startIdx+1], data[startIdx+2]];
+    const [fr, fg, fb] = hexToRgba(fillColor);
+    const tolerance = 32;
+    if (matchColor([r0,g0,b0], fr, fg, fb, tolerance)) return;
+    const stack = [[Math.floor(startX), Math.floor(startY)]];
+    const visited = new Set();
+    visited.add(startIdx);
+    while (stack.length) {
+        const [x, y] = stack.pop();
+        const idx = (y * canvas.width + x) * 4;
+        if (x < 0 || x >= canvas.width || y < 0 || y >= canvas.height) continue;
+        if (!matchColor([data[idx], data[idx+1], data[idx+2]], r0, g0, b0, tolerance)) continue;
+        data[idx] = fr; data[idx+1] = fg; data[idx+2] = fb; data[idx+3] = 255;
+        for (const [dx, dy] of [[-1,0],[1,0],[0,-1],[0,1]]) {
+            const nx = x + dx, ny = y + dy;
+            const nidx = (ny * canvas.width + nx) * 4;
+            if (!visited.has(nidx)) { visited.add(nidx); stack.push([nx, ny]); }
         }
+    }
+    ctx.putImageData(imgData, 0, 0);
+}
 
-        // Увеличиваем балл для выбранной эмоции
-        let currentValue = parseInt(document.getElementById(emotion).value) || 0;
-        document.getElementById(emotion).value = currentValue + 1;
+function handleCanvasDown(e) {
+    const {x, y} = e.touches ? getTouchCoords(e) : getCanvasCoords(e);
+    if (isBucket) {
+        saveState();
+        floodFill(x, y, currentColor);
+        const emotionEl = document.querySelector('.color-button.active[data-emotion]');
+        const emName = emotionEl ? emotionEl.dataset.emotion : null;
+        if (emName && document.getElementById(emName)) {
+            document.getElementById(emName).value = parseInt(document.getElementById(emName).value || 0) + 1;
+        }
+    } else {
+        saveState();
+        painting = true;
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        drawAt(x, y);
+    }
+}
+function handleCanvasMove(e) {
+    if (!painting || isBucket) return;
+    const {x, y} = e.touches ? getTouchCoords(e) : getCanvasCoords(e);
+    drawAt(x, y);
+}
 
+canvas.addEventListener('mousedown', handleCanvasDown);
+canvas.addEventListener('mouseup', () => { painting = false; ctx.beginPath(); });
+canvas.addEventListener('mouseleave', () => { painting = false; ctx.beginPath(); });
+canvas.addEventListener('mousemove', handleCanvasMove);
+canvas.addEventListener('touchstart', (e) => { e.preventDefault(); handleCanvasDown(e); });
+canvas.addEventListener('touchmove', (e) => { e.preventDefault(); handleCanvasMove(e); });
+canvas.addEventListener('touchend', (e) => { e.preventDefault(); painting = false; ctx.beginPath(); });
+
+document.getElementById('brushBtn').addEventListener('click', function() {
+    document.querySelectorAll('.tool-button, .eraser-button').forEach(b => b.classList.remove('active'));
+    this.classList.add('active');
+    document.getElementById('bucketBtn').classList.remove('active');
+    document.getElementById('eraserBtn').classList.remove('active');
+    const colorBtn = document.querySelector(`.color-button[data-color="${lastColorName}"]`);
+    if (colorBtn) colorBtn.classList.add('active');
+    isEraser = false;
+    isBucket = false;
+});
+document.getElementById('undoBtn').addEventListener('click', function() {
+    undo();
+});
+document.getElementById('eraserBtn').addEventListener('click', function() {
+    document.querySelectorAll('.color-button, .tool-button').forEach(b => b.classList.remove('active'));
+    this.classList.add('active');
+    isEraser = true;
+    isBucket = false;
+});
+document.getElementById('bucketBtn').addEventListener('click', function() {
+    document.querySelectorAll('.tool-button, .eraser-button').forEach(b => b.classList.remove('active'));
+    this.classList.add('active');
+    document.getElementById('brushBtn').classList.remove('active');
+    isEraser = false;
+    isBucket = true;
+});
+
+document.querySelectorAll('.color-button').forEach(btn => {
+    btn.addEventListener('click', function() {
+        document.querySelectorAll('.color-button').forEach(b => b.classList.remove('active'));
+        document.getElementById('eraserBtn').classList.remove('active');
+        document.getElementById('bucketBtn').classList.remove('active');
+        document.getElementById('brushBtn').classList.add('active');
+        this.classList.add('active');
+        isEraser = false;
+        isBucket = false;
+        const colorMap = {red:'#ef5350',orange:'#ff9800',yellow:'#ffeb3b',green:'#66bb6a',blue:'#42a5f5',purple:'#ab47bc',black:'#37474f',pink:'#f8bbd0',beige:'#f5deb3',brown:'#8b4513'};
+        currentColor = colorMap[this.dataset.color] || this.dataset.color;
+        lastColorName = this.dataset.color;
+        const emotion = this.dataset.emotion;
+        if (emotion && document.getElementById(emotion)) {
+            document.getElementById(emotion).value = parseInt(document.getElementById(emotion).value || 0) + 1;
+        }
     });
 });
 
-// Перед отправкой формы — сохраняем рисунок в скрытое поле
-document.getElementById('paintingForm').addEventListener('submit', function() {
-    const dataUrl = canvas.toDataURL('image/png');
-    document.getElementById('drawingData').value = dataUrl;
+document.querySelectorAll('.brush-size-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        document.querySelectorAll('.brush-size-btn').forEach(b => b.classList.remove('active'));
+        this.classList.add('active');
+        brushSize = parseInt(this.dataset.size);
+    });
+});
+
+function getColorCounts() {
+    return {
+        anger: parseInt(document.getElementById('anger').value || 0),
+        joy: parseInt(document.getElementById('joy').value || 0),
+        sorrow: parseInt(document.getElementById('sorrow').value || 0),
+        love: parseInt(document.getElementById('love').value || 0),
+        boredom: parseInt(document.getElementById('boredom').value || 0),
+        happiness: parseInt(document.getElementById('happiness').value || 0),
+    };
+}
+function resetColorCounts() {
+    ['anger','joy','sorrow','love','boredom','happiness'].forEach(id => document.getElementById(id).value = '0');
+}
+
+function restoreDrawing(data) {
+    if (!data || !data.image_base64) return;
+    const img = new Image();
+    img.onload = () => {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0);
+        history.length = 0;
+    };
+    img.src = data.image_base64;
+}
+function applyColorCounts(counts) {
+    if (!counts) return;
+    ['anger','joy','sorrow','love','boredom','happiness'].forEach(id => {
+        document.getElementById(id).value = counts[id] || 0;
+    });
+}
+
+document.getElementById('nextBtn').addEventListener('click', function() {
+    drawingsData[promptIdx] = {
+        prompt: PROMPTS[promptIdx],
+        prompt_key: ['house','family','animal'][promptIdx],
+        image_base64: canvas.toDataURL('image/png'),
+        color_counts: getColorCounts()
+    };
+    promptIdx++;
+    if (promptIdx < PROMPTS.length) {
+        ctx.fillStyle = 'white';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        history.length = 0;
+        resetColorCounts();
+        document.getElementById('promptText').textContent = PROMPTS[promptIdx];
+        document.getElementById('backBtn').style.display = 'block';
+        if (promptIdx === PROMPTS.length - 1) {
+            this.style.display = 'none';
+            document.getElementById('submitBtn').style.display = 'block';
+        }
+    }
+});
+
+document.getElementById('backBtn').addEventListener('click', function() {
+    if (promptIdx <= 0) return;
+    promptIdx--;
+    document.getElementById('promptText').textContent = PROMPTS[promptIdx];
+    document.getElementById('nextBtn').style.display = 'block';
+    document.getElementById('submitBtn').style.display = 'none';
+    if (promptIdx === 0) this.style.display = 'none';
+    const saved = drawingsData[promptIdx];
+    if (saved) {
+        restoreDrawing(saved);
+        applyColorCounts(saved.color_counts);
+    } else {
+        ctx.fillStyle = 'white';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        history.length = 0;
+        resetColorCounts();
+    }
+});
+
+function preparePaintingForm() {
+    drawingsData[promptIdx] = {
+        prompt: PROMPTS[promptIdx],
+        prompt_key: ['house','family','animal'][promptIdx],
+        image_base64: canvas.toDataURL('image/png'),
+        color_counts: getColorCounts()
+    };
+    const prompts = drawingsData.filter(x => x);
+    const lastImg = prompts.length ? prompts[prompts.length-1].image_base64 : canvas.toDataURL('image/png');
+    const agg = { anger:0, joy:0, sorrow:0, love:0, boredom:0, happiness:0 };
+    prompts.forEach(d => {
+        if (d.color_counts) Object.keys(agg).forEach(k => { agg[k] += (d.color_counts[k] || 0); });
+    });
+    ['anger','joy','sorrow','love','boredom','happiness'].forEach(id => document.getElementById(id).value = agg[id]);
+    document.getElementById('drawingData').value = JSON.stringify({
+        prompts: prompts,
+        image_base64: lastImg
+    });
+}
+
+document.getElementById('paintingForm').addEventListener('submit', function(e) {
+    preparePaintingForm();
+});
+
+document.getElementById('backToDashboard').addEventListener('click', function(e) {
+    e.preventDefault();
+    preparePaintingForm();
+    document.getElementById('paintingForm').submit();
 });
 </script>
-
 {% endblock %}

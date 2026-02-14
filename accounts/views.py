@@ -4,18 +4,22 @@ from django.http import JsonResponse, HttpResponseForbidden, HttpResponse
 from django.utils import timezone
 from django.core.paginator import Paginator
 from django.db.models import Q, Sum, Avg, Count
+from django.db.models.functions import TruncDate
 from django.contrib.auth import logout
 import json
 import os
+import base64
+import uuid
 from datetime import datetime, timedelta, date
 from collections import defaultdict
+from django.core.files.base import ContentFile
 
 from .forms import (
     LoginForm, UserCreateForm, PrescriptionForm, DoctorRegistrationForm,
     ParentRegistrationForm, ChildRegistrationForm, ConnectionCodeForm,
-    DoctorVerificationForm, UserEditForm, ProfileSelfEditForm, ChildAssignForm,
-    DateRangeFilterForm, SubscriptionForm, FeedbackForm, PasswordChangeForm,
-    BulkChildAssignForm
+    DoctorVerificationForm, DoctorLicenseEditForm, UserEditForm, ProfileSelfEditForm,
+    ChildAssignForm, DateRangeFilterForm, SubscriptionForm, FeedbackForm,
+    PasswordChangeForm, BulkChildAssignForm, BulkDoctorAssignForm
 )
 from .models import (
     CUsers, GameResult, Prescription, DoctorLicense, GameSession,
@@ -268,26 +272,38 @@ def admin_delete_user_view(request, id):
 
 
 def admin_bulk_assign_view(request):
-    """Массовое назначение детей родителям"""
+    """Массовое назначение: дети родителям, пациенты врачу"""
     if request.session.get('user_role') != 'admin':
         return HttpResponseForbidden('Доступ запрещён')
     
     if request.method == 'POST':
-        form = BulkChildAssignForm(request.POST)
-        if form.is_valid():
-            parent = form.cleaned_data['parent']
-            children = form.cleaned_data['children']
-            
-            for child in children:
-                parent.children.add(child)
-            
-            messages.success(request, f'{children.count()} детей успешно привязаны к родителю {parent.name}')
-            return redirect('admin_dashboard')
+        if 'patients' in request.POST:
+            doctor_form = BulkDoctorAssignForm(request.POST)
+            if doctor_form.is_valid():
+                doctor = doctor_form.cleaned_data['doctor']
+                patients = doctor_form.cleaned_data['patients']
+                for patient in patients:
+                    doctor.patients.add(patient)
+                messages.success(request, f'{patients.count()} пациентов назначено врачу {doctor.name}')
+                return redirect('admin_dashboard')
+            parent_form = BulkChildAssignForm()
+        else:
+            parent_form = BulkChildAssignForm(request.POST)
+            if parent_form.is_valid():
+                parent = parent_form.cleaned_data['parent']
+                children = parent_form.cleaned_data['children']
+                for child in children:
+                    parent.children.add(child)
+                messages.success(request, f'{children.count()} детей привязаны к родителю {parent.name}')
+                return redirect('admin_dashboard')
+            doctor_form = BulkDoctorAssignForm()
     else:
-        form = BulkChildAssignForm()
+        parent_form = BulkChildAssignForm()
+        doctor_form = BulkDoctorAssignForm()
     
     context = {
-        'form': form,
+        'parent_form': parent_form,
+        'doctor_form': doctor_form,
     }
     
     return render(request, 'admin_bulk_assign.html', context)
@@ -319,9 +335,15 @@ def admin_statistics_view(request):
     
     # Активность по дням (последние 30 дней)
     thirty_days_ago = timezone.now() - timedelta(days=30)
-    daily_activity = GameResult.objects.filter(
-        date__gte=thirty_days_ago
-    ).extra({'date': "date(date)"}).values('date').annotate(count=Count('id')).order_by('date')
+    daily_activity = list(
+        GameResult.objects.filter(date__gte=thirty_days_ago)
+        .annotate(day=TruncDate('date'))
+        .values('day')
+        .annotate(count=Count('id'))
+        .order_by('day')
+    )
+    # Приводим к формату {date, count} для шаблона
+    daily_activity = [{'date': str(d['day']), 'count': d['count']} for d in daily_activity]
     
     context = {
         'total_games': total_games,
@@ -338,6 +360,32 @@ def admin_statistics_view(request):
 
 # ==================== ПРЕДСТАВЛЕНИЯ ДЛЯ ВРАЧА ====================
 
+def doctor_license_edit_view(request):
+    """Редактирование лицензии врачом (после отклонения или обновление данных)"""
+    if request.session.get('user_role') != 'doctor':
+        return HttpResponseForbidden('Доступ запрещён')
+    
+    doctor_id = request.session.get('user_id')
+    doctor = get_object_or_404(CUsers, id=doctor_id, role='doctor')
+    
+    try:
+        license_obj = doctor.license
+    except DoctorLicense.DoesNotExist:
+        license_obj = DoctorLicense(user=doctor, license_number='', license_scan='', is_verified=False)
+    
+    if request.method == 'POST':
+        form = DoctorLicenseEditForm(request.POST, request.FILES, instance=license_obj)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Данные лицензии обновлены. Заявка отправлена на повторную проверку администратору.')
+            return redirect('doctor_dashboard')
+    else:
+        form = DoctorLicenseEditForm(instance=license_obj)
+    
+    context = {'form': form, 'license': license_obj}
+    return render(request, 'doctor_license_edit.html', context)
+
+
 def doctor_dashboard_view(request):
     """Панель врача"""
     if request.session.get('user_role') != 'doctor':
@@ -348,13 +396,13 @@ def doctor_dashboard_view(request):
     
     # Проверка лицензии
     try:
-        license = doctor.license
-        if not license.is_verified:
+        license_obj = doctor.license
+        if not license_obj.is_verified:
             messages.warning(request, 'Ваша лицензия ещё не проверена администратором. Доступ ограничен.')
-            return render(request, 'doctor_pending.html')
+            return render(request, 'doctor_pending.html', {'license': license_obj})
     except DoctorLicense.DoesNotExist:
         messages.warning(request, 'Пожалуйста, заполните информацию о лицензии в профиле.')
-        return redirect('doctor_profile')
+        return redirect('profile')
     
     # Присоединение пациента по коду
     if request.method == 'POST' and 'connect_code' in request.POST:
@@ -445,20 +493,9 @@ def patient_detail_view(request, patient_id):
     # Назначения
     prescriptions = Prescription.objects.filter(child=patient).order_by('-date_created')
     
-    # Получаем или создаём диагностический профиль с нечёткой логикой
+    # Всегда пересчитываем профиль по актуальным результатам игр
     analyzer = FuzzyAnalyzer()
-    
-    # Проверяем, есть ли свежий профиль (не старше 7 дней)
-    recent_profile = DiagnosticProfile.objects.filter(
-        child=patient,
-        date_created__gte=timezone.now() - timedelta(days=7)
-    ).first()
-    
-    if recent_profile:
-        profile = recent_profile
-    else:
-        # Создаём новый профиль
-        profile = analyzer.create_diagnostic_profile(patient.id)
+    profile = analyzer.create_diagnostic_profile(patient.id)
     
     # Данные для радарной диаграммы
     radar_data = profile.get_radar_data()
@@ -483,10 +520,15 @@ def patient_detail_view(request, patient_id):
     emotion_labels = list(emotion_scores.keys())
     emotion_values = list(emotion_scores.values())
     
+    # Выявленные диагнозы (только для врача)
+    from .models import DiagnosticDiagnosis
+    detected_diagnoses = DiagnosticDiagnosis.objects.filter(code__in=profile.detected_diagnoses) if profile.detected_diagnoses else []
+    
     context = {
         'doctor': doctor,
         'patient': patient,
         'game_results': game_results,
+        'detected_diagnoses': detected_diagnoses,
         'emotion_scores': emotion_scores,
         'emotion_chart_data': json.dumps({'labels': emotion_labels, 'data': emotion_values}),
         'prescriptions': prescriptions,
@@ -525,12 +567,11 @@ def doctor_analysis_view(request, patient_id):
     
     patient = get_object_or_404(CUsers, id=patient_id, role='child')
     
-    # Получаем диагностический профиль
-    profile = DiagnosticProfile.objects.filter(child=patient).first()
-    
-    if not profile:
-        analyzer = FuzzyAnalyzer()
-        profile = analyzer.create_diagnostic_profile(patient.id)
+    # Всегда пересчитываем профиль по актуальным результатам игр
+    from .models import DiagnosticDiagnosis
+    analyzer = FuzzyAnalyzer()
+    profile = analyzer.create_diagnostic_profile(patient.id)
+    detected_diagnoses = list(DiagnosticDiagnosis.objects.filter(code__in=profile.detected_diagnoses)) if profile.detected_diagnoses else []
     
     # Получаем все результаты
     game_results = GameResult.objects.filter(user=patient).select_related('session').order_by('date')
@@ -591,6 +632,7 @@ def doctor_analysis_view(request, patient_id):
         'emotion_chart_data': json.dumps(emotion_chart_data),
         'behavior_trajectories': behavior_trajectories,
         'radar_data': json.dumps(profile.get_radar_data()),
+        'detected_diagnoses': detected_diagnoses,
     }
     
     return render(request, 'doctor_analysis.html', context)
@@ -701,6 +743,120 @@ def child_detail_for_parent_view(request, child_id):
     return render(request, 'child_detail_parent.html', context)
 
 
+def parent_download_prescriptions_view(request, child_id):
+    """Скачивание назначений врача для ребёнка (PDF) — только для родителя"""
+    parent_id = request.session.get('user_id')
+    if request.session.get('user_role') != 'parent' or not parent_id:
+        return HttpResponseForbidden('Доступ запрещён')
+    
+    parent = get_object_or_404(CUsers, id=parent_id, role='parent')
+    child = get_object_or_404(CUsers, id=child_id, role='child')
+    
+    if not parent.children.filter(id=child.id).exists():
+        return HttpResponseForbidden('Это не ваш ребёнок')
+    
+    prescriptions = Prescription.objects.filter(child=child, is_active=True).order_by('-date_created')
+    
+    try:
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.units import cm
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.ttfonts import TTFont
+        from io import BytesIO
+    except ImportError:
+        # Fallback: простой текстовый файл без reportlab
+        from io import BytesIO
+        lines = [
+            f'Назначения врача для {child.name}',
+            f'Дата рождения: {child.date_of_b.strftime("%d.%m.%Y")}',
+            '',
+            '=' * 50,
+        ]
+        for p in prescriptions:
+            type_display = dict(Prescription._meta.get_field('prescription_type').choices).get(p.prescription_type, p.prescription_type)
+            lines.append(f'\n{type_display} — {p.date_created.strftime("%d.%m.%Y")}')
+            lines.append(p.text)
+            if p.medication_name:
+                lines.append(f'Препарат: {p.medication_name}')
+            if p.dosage:
+                lines.append(f'Дозировка: {p.dosage}')
+            if p.duration:
+                lines.append(f'Длительность: {p.duration}')
+            lines.append('')
+        
+        content = '\n'.join(lines).encode('utf-8')
+        response = HttpResponse(content, content_type='text/plain; charset=utf-8')
+        response['Content-Disposition'] = f'attachment; filename="naznacheniya_{child.name.replace(" ", "_")}.txt"'
+        return response
+    
+    # Шрифт с поддержкой кириллицы (без «закрытых» букв)
+    cyrillic_font = None
+    font_paths = [
+        os.path.join(os.environ.get('WINDIR', 'C:\\Windows'), 'Fonts', 'arial.ttf'),
+        os.path.join(os.environ.get('WINDIR', 'C:\\Windows'), 'Fonts', 'times.ttf'),
+        '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+        '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
+        '/usr/share/fonts/TTF/DejaVuSans.ttf',
+    ]
+    if hasattr(settings, 'BASE_DIR'):
+        base = str(settings.BASE_DIR)
+        font_paths.insert(0, os.path.join(base, 'static', 'fonts', 'DejaVuSans.ttf'))
+    for fp in font_paths:
+        if fp and os.path.exists(fp):
+            try:
+                pdfmetrics.registerFont(TTFont('CyrillicFont', fp))
+                cyrillic_font = 'CyrillicFont'
+                break
+            except Exception:
+                continue
+    
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=2*cm, leftMargin=2*cm, topMargin=2*cm, bottomMargin=2*cm)
+    base_styles = getSampleStyleSheet()
+    
+    if cyrillic_font:
+        styles = {
+            'Title': ParagraphStyle('Title', parent=base_styles['Title'], fontName=cyrillic_font, fontSize=16),
+            'Normal': ParagraphStyle('Normal', parent=base_styles['Normal'], fontName=cyrillic_font, fontSize=11),
+            'Heading2': ParagraphStyle('Heading2', parent=base_styles['Heading2'], fontName=cyrillic_font, fontSize=12),
+        }
+    else:
+        styles = {'Title': base_styles['Title'], 'Normal': base_styles['Normal'], 'Heading2': base_styles['Heading2']}
+    
+    story = []
+    
+    story.append(Paragraph(f'Назначения врача для {child.name}', styles['Title']))
+    story.append(Paragraph(f'Дата рождения: {child.date_of_b.strftime("%d.%m.%Y")}', styles['Normal']))
+    story.append(Spacer(1, 0.5*cm))
+    
+    type_map = dict(Prescription._meta.get_field('prescription_type').choices)
+    
+    for p in prescriptions:
+        type_display = type_map.get(p.prescription_type, p.prescription_type)
+        story.append(Paragraph(f'<b>{type_display}</b> — {p.date_created.strftime("%d.%m.%Y")}', styles['Heading2']))
+        story.append(Paragraph(p.text.replace('\n', '<br/>'), styles['Normal']))
+        if p.medication_name or p.dosage or p.duration:
+            extra = []
+            if p.medication_name:
+                extra.append(f'Препарат: {p.medication_name}')
+            if p.dosage:
+                extra.append(f'Дозировка: {p.dosage}')
+            if p.duration:
+                extra.append(f'Длительность: {p.duration}')
+            story.append(Paragraph('<br/>'.join(extra), styles['Normal']))
+        story.append(Spacer(1, 0.4*cm))
+    
+    doc.build(story)
+    buffer.seek(0)
+    
+    response = HttpResponse(buffer.getvalue(), content_type='application/pdf')
+    safe_name = ''.join(c if c.isalnum() or c in ' _-' else '_' for c in child.name)
+    response['Content-Disposition'] = f'attachment; filename="naznacheniya_{safe_name}.pdf"'
+    return response
+
+
 # ==================== ПРЕДСТАВЛЕНИЯ ДЛЯ РЕБЁНКА ====================
 
 def game_dashboard_view(request, user_id):
@@ -754,6 +910,9 @@ def game_dashboard_view(request, user_id):
 
 def game_painting_view(request, user_id):
     """Игра 'Раскраска'"""
+    session_user_id = request.session.get('user_id')
+    if request.session.get('user_role') != 'child' or session_user_id is None or int(session_user_id) != int(user_id):
+        return redirect('login')
     child = get_object_or_404(CUsers, id=user_id, role='child')
     
     if request.method == 'POST':
@@ -768,7 +927,7 @@ def game_painting_view(request, user_id):
             except GameSession.DoesNotExist:
                 pass
         
-        # Эмоции из скрытых полей
+        # Эмоции из скрытых полей (агрегат по всем 3 рисункам)
         anger = int(request.POST.get('anger', 0) or 0)
         joy = int(request.POST.get('joy', 0) or 0)
         sorrow = int(request.POST.get('sorrow', 0) or 0)
@@ -777,7 +936,17 @@ def game_painting_view(request, user_id):
         happiness = int(request.POST.get('happiness', 0) or 0)
         
         drawing_data = {'color_counts': {}}
-        drawing_base64 = request.POST.get('drawing_data', '')
+        raw_drawing = request.POST.get('drawing_data', '')
+        drawing_base64 = ''
+        if raw_drawing.strip().startswith('{'):
+            try:
+                parsed = json.loads(raw_drawing)
+                drawing_data = parsed
+                drawing_base64 = parsed.get('image_base64', '')
+            except (json.JSONDecodeError, TypeError):
+                drawing_base64 = raw_drawing
+        else:
+            drawing_base64 = raw_drawing
         if drawing_base64 and drawing_base64.startswith('data:image'):
             drawing_data['image_base64'] = drawing_base64
         
@@ -794,6 +963,21 @@ def game_painting_view(request, user_id):
             drawing_data=drawing_data,
         )
         result.save()
+        
+        # Сохраняем рисунок как файл для просмотра врачом
+        if drawing_base64 and drawing_base64.startswith('data:image'):
+            try:
+                format_str, img_str = drawing_base64.split(';base64,')
+                ext = 'png' if 'png' in format_str else 'jpeg'
+                data = base64.b64decode(img_str)
+                if len(data) > 100:  # не пустой рисунок
+                    result.final_image.save(
+                        f'drawing_{result.id}_{uuid.uuid4().hex[:8]}.{ext}',
+                        ContentFile(data),
+                        save=True
+                    )
+            except Exception:
+                pass
         
         messages.success(request, 'Рисунок сохранён!')
         return redirect('game_dashboard', user_id=child.id)
@@ -909,25 +1093,45 @@ def game_choice_view(request, user_id):
             except GameSession.DoesNotExist:
                 pass
         
-        # Маппинг раундов на эмоции: round_1=anger, round_2=boredom, round_3=joy
-        round_1_val = 1 if request.POST.get('round_1') else 0
-        round_2_val = 1 if request.POST.get('round_2') else 0
-        round_3_val = 1 if request.POST.get('round_3') else 0
+        choices_raw = request.POST.get('choices_json')
+        if choices_raw:
+            try:
+                choices = json.loads(choices_raw)
+            except (json.JSONDecodeError, TypeError):
+                choices = {f'round_{i}': request.POST.get(f'round_{i}', '') for i in range(1, 6)}
+        else:
+            choices = {
+                'round_1': request.POST.get('round_1', ''),
+                'round_2': request.POST.get('round_2', ''),
+                'round_3': request.POST.get('round_3', ''),
+                'round_4': request.POST.get('round_4', ''),
+                'round_5': request.POST.get('round_5', ''),
+            }
+        emotion_counts = {'joy': 0, 'sorrow': 0, 'love': 0, 'anger': 0, 'boredom': 0, 'happiness': 0}
+        for k, v in choices.items():
+            val = v.get('value', v) if isinstance(v, dict) else v
+            if val in emotion_counts:
+                emotion_counts[val] += 1
         
-        choices = {
-            'round_1': request.POST.get('round_1', ''),
-            'round_2': request.POST.get('round_2', ''),
-            'round_3': request.POST.get('round_3', ''),
-        }
+        rt_raw = request.POST.get('reaction_times', '[]')
+        try:
+            reaction_times = json.loads(rt_raw) if isinstance(rt_raw, str) else rt_raw
+        except (json.JSONDecodeError, TypeError):
+            reaction_times = []
         
         result = GameResult(
             user=child,
             session=session,
             game_type='Choice',
-            anger=round_1_val,
-            boredom=round_2_val,
-            joy=round_3_val,
+            anger=emotion_counts.get('anger', 0),
+            boredom=emotion_counts.get('boredom', 0),
+            joy=emotion_counts.get('joy', 0),
+            sorrow=emotion_counts.get('sorrow', 0),
+            love=emotion_counts.get('love', 0),
+            happiness=emotion_counts.get('happiness', 0),
             choices=choices,
+            reaction_times=reaction_times,
+            reaction_time=sum(reaction_times) / len(reaction_times) if reaction_times else None,
         )
         result.save()
         
@@ -1028,24 +1232,36 @@ def game_dialog_view(request, user_id):
             except GameSession.DoesNotExist:
                 pass
         
-        # Собираем ответы из формы
-        q4_val = request.POST.get('question_4', '')
-        q5_val = request.POST.get('question_5', '')
-        answers = {
-            'question_1': request.POST.get('question_1', '0'),
-            'question_2': request.POST.get('question_2', '0'),
-            'question_3': request.POST.get('question_3', '0'),
-            'question_4': q4_val,
-            'question_4a': '1' if q4_val == 'love' else '0',
-            'question_5': q5_val,
-            'question_5a': '1' if q5_val == 'happy' else '0',
-        }
+        # Собираем ответы (q1–q5 с эмоциями: joy, sorrow, love, anger, boredom, happiness)
+        # Поддержка dialog_answers JSON (множественный выбор на этапе)
+        dialog_raw = request.POST.get('dialog_answers')
+        if dialog_raw:
+            try:
+                answers = json.loads(dialog_raw)
+            except (json.JSONDecodeError, TypeError):
+                answers = {f'q{i}': request.POST.get(f'q{i}', '') for i in range(1, 6)}
+        else:
+            answers = {f'q{i}': request.POST.get(f'q{i}', '') for i in range(1, 6)}
+        emotion_counts = {'joy': 0, 'sorrow': 0, 'love': 0, 'anger': 0, 'boredom': 0, 'happiness': 0}
+        for v in answers.values():
+            vals = v if isinstance(v, list) else [v] if v else []
+            for x in vals:
+                if x in emotion_counts:
+                    emotion_counts[x] += 1
         
-        joy = int(request.POST.get('question_1', 0)) + int(request.POST.get('question_3', 0))
-        sorrow = int(request.POST.get('question_2', 0)) + (1 if q5_val == 'sad' else 0)
-        love = 1 if q4_val == 'love' else 0
-        boredom = 1 if q5_val == 'bored' else 0
-        happiness = 1 if q5_val == 'happy' else 0
+        joy = emotion_counts.get('joy', 0)
+        sorrow = emotion_counts.get('sorrow', 0)
+        love = emotion_counts.get('love', 0)
+        anger = emotion_counts.get('anger', 0)
+        boredom = emotion_counts.get('boredom', 0)
+        happiness = emotion_counts.get('happiness', 0)
+        
+        # Время реакции
+        rt_raw = request.POST.get('reaction_times', '[]')
+        try:
+            reaction_times = json.loads(rt_raw) if isinstance(rt_raw, str) else rt_raw
+        except (json.JSONDecodeError, TypeError):
+            reaction_times = []
         
         result = GameResult(
             user=child,
@@ -1054,10 +1270,12 @@ def game_dialog_view(request, user_id):
             joy=joy,
             sorrow=sorrow,
             love=love,
-            anger=0,
+            anger=anger,
             boredom=boredom,
             happiness=happiness,
             dialog_answers=answers,
+            reaction_times=reaction_times,
+            reaction_time=sum(reaction_times) / len(reaction_times) if reaction_times else None,
         )
         result.save()
         
@@ -1140,6 +1358,346 @@ def game_dialog_save_view(request, user_id):
         
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
+
+
+def game_memory_view(request, user_id):
+    """Игра 'Память' — найди пары"""
+    session_user_id = request.session.get('user_id')
+    if request.session.get('user_role') != 'child' or session_user_id is None or int(session_user_id) != int(user_id):
+        return redirect('login')
+    child = get_object_or_404(CUsers, id=user_id, role='child')
+    if request.method == 'POST':
+        session_id = request.POST.get('session_id')
+        session = None
+        if session_id:
+            try:
+                session = GameSession.objects.get(id=session_id, user=child)
+                session.end_time = timezone.now()
+                session.completed = True
+                session.save()
+            except GameSession.DoesNotExist:
+                pass
+        result = GameResult(
+            user=child, session=session, game_type='Memory',
+            performance_metrics={
+                'pairs_found': int(request.POST.get('pairs_found', 0)),
+                'attempts': int(request.POST.get('attempts', 0)),
+                'time_seconds': int(request.POST.get('time_seconds', 0)),
+                'levels_completed': int(request.POST.get('levels_completed', 0)),
+            }
+        )
+        result.save()
+        messages.success(request, 'Результат сохранён!')
+        return redirect('game_dashboard', user_id=child.id)
+    session = GameSession.objects.create(user=child, game_type='Memory')
+    return render(request, 'game_memory.html', {'child': child, 'session': session})
+
+
+def game_puzzle_view(request, user_id):
+    """Игра 'Головоломка' — собери по порядку"""
+    session_user_id = request.session.get('user_id')
+    if request.session.get('user_role') != 'child' or session_user_id is None or int(session_user_id) != int(user_id):
+        return redirect('login')
+    child = get_object_or_404(CUsers, id=user_id, role='child')
+    if request.method == 'POST':
+        session_id = request.POST.get('session_id')
+        session = None
+        if session_id:
+            try:
+                session = GameSession.objects.get(id=session_id, user=child)
+                session.end_time = timezone.now()
+                session.completed = True
+                session.save()
+            except GameSession.DoesNotExist:
+                pass
+        result = GameResult(
+            user=child, session=session, game_type='Puzzle',
+            performance_metrics={
+                'moves': int(request.POST.get('moves', 0)),
+                'completed': int(request.POST.get('completed', 0)),
+            }
+        )
+        result.save()
+        messages.success(request, 'Результат сохранён!')
+        return redirect('game_dashboard', user_id=child.id)
+    session = GameSession.objects.create(user=child, game_type='Puzzle')
+    return render(request, 'game_puzzle.html', {'child': child, 'session': session})
+
+
+def game_sequence_view(request, user_id):
+    """Игра 'Последовательность' — повтори паттерн"""
+    session_user_id = request.session.get('user_id')
+    if request.session.get('user_role') != 'child' or session_user_id is None or int(session_user_id) != int(user_id):
+        return redirect('login')
+    child = get_object_or_404(CUsers, id=user_id, role='child')
+    if request.method == 'POST':
+        session_id = request.POST.get('session_id')
+        session = None
+        if session_id:
+            try:
+                session = GameSession.objects.get(id=session_id, user=child)
+                session.end_time = timezone.now()
+                session.completed = True
+                session.save()
+            except GameSession.DoesNotExist:
+                pass
+        result = GameResult(
+            user=child, session=session, game_type='Sequence',
+            mistakes=int(request.POST.get('mistakes', 0)),
+            performance_metrics={
+                'level_reached': int(request.POST.get('level_reached', 1)),
+            }
+        )
+        result.save()
+        messages.success(request, 'Результат сохранён!')
+        return redirect('game_dashboard', user_id=child.id)
+    session = GameSession.objects.create(user=child, game_type='Sequence')
+    return render(request, 'game_sequence.html', {'child': child, 'session': session})
+
+
+# ==================== 6 НОВЫХ ИГР (ЭМОЦИИ + КОГНИЦИЯ) ====================
+
+def _child_game_check(request, user_id):
+    """Проверка доступа ребёнка к игре. Возвращает child или None."""
+    if request.session.get('user_role') != 'child' or not request.session.get('user_id'):
+        return None
+    if int(request.session.get('user_id')) != int(user_id):
+        return None
+    return get_object_or_404(CUsers, id=user_id, role='child')
+
+
+def game_emotion_face_view(request, user_id):
+    """Узнай эмоцию — распознавание эмоций по лицу (эмодзи)"""
+    child = _child_game_check(request, user_id)
+    if not child:
+        return redirect('login')
+    if request.method == 'POST':
+        session_id = request.POST.get('session_id')
+        session = None
+        if session_id:
+            try:
+                session = GameSession.objects.get(id=session_id, user=child)
+            except (GameSession.DoesNotExist, ValueError):
+                pass
+        if session:
+            session.end_time = timezone.now()
+            session.completed = True
+            session.save()
+        data = json.loads(request.POST.get('data', '{}'))
+        correct = data.get('correct', 0)
+        total = data.get('total', 8)
+        reaction_times = data.get('reaction_times', [])
+        result = GameResult(
+            user=child, session=session, game_type='EmotionFace',
+            performance_metrics={'correct': correct, 'total': total, 'accuracy': correct / total if total else 0},
+            reaction_times=reaction_times,
+            reaction_time=sum(reaction_times) / len(reaction_times) if reaction_times else None,
+            mistakes=total - correct,
+            accuracy=correct / total if total else 0,
+        )
+        result.save()
+        messages.success(request, 'Результат сохранён!')
+        return redirect('game_dashboard', user_id=child.id)
+    session = GameSession.objects.create(user=child, game_type='EmotionFace')
+    return render(request, 'game_emotion_face.html', {'child': child, 'session': session})
+
+
+def game_attention_view(request, user_id):
+    """Внимание — нажми когда увидишь цель (устойчивое внимание)"""
+    child = _child_game_check(request, user_id)
+    if not child:
+        return redirect('login')
+    if request.method == 'POST':
+        session_id = request.POST.get('session_id')
+        session = None
+        if session_id:
+            try:
+                session = GameSession.objects.get(id=session_id, user=child)
+            except (GameSession.DoesNotExist, ValueError):
+                pass
+        if session:
+            session.end_time = timezone.now()
+            session.completed = True
+            session.save()
+        data = json.loads(request.POST.get('data', '{}'))
+        hits = data.get('hits', 0)
+        misses = data.get('misses', 0)
+        false_alarms = data.get('false_alarms', 0)
+        reaction_times = data.get('reaction_times', [])
+        result = GameResult(
+            user=child, session=session, game_type='Attention',
+            performance_metrics={'hits': hits, 'misses': misses, 'false_alarms': false_alarms},
+            reaction_times=reaction_times,
+            reaction_time=sum(reaction_times) / len(reaction_times) if reaction_times else None,
+            mistakes=misses + false_alarms,
+        )
+        result.save()
+        messages.success(request, 'Результат сохранён!')
+        return redirect('game_dashboard', user_id=child.id)
+    session = GameSession.objects.create(user=child, game_type='Attention')
+    return render(request, 'game_attention.html', {'child': child, 'session': session})
+
+
+def game_gonogo_view(request, user_id):
+    """Стоп-игра — Go/No-Go (торможение, импульсивность)"""
+    child = _child_game_check(request, user_id)
+    if not child:
+        return redirect('login')
+    if request.method == 'POST':
+        session_id = request.POST.get('session_id')
+        session = None
+        if session_id:
+            try:
+                session = GameSession.objects.get(id=session_id, user=child)
+            except (GameSession.DoesNotExist, ValueError):
+                pass
+        if session:
+            session.end_time = timezone.now()
+            session.completed = True
+            session.save()
+        data = json.loads(request.POST.get('data', '{}'))
+        correct_go = data.get('correct_go', 0)
+        correct_nogo = data.get('correct_nogo', 0)
+        commission_errors = data.get('commission_errors', 0)  # нажал на No-Go
+        omission_errors = data.get('omission_errors', 0)  # не нажал на Go
+        reaction_times = data.get('reaction_times', [])
+        result = GameResult(
+            user=child, session=session, game_type='GoNoGo',
+            performance_metrics={
+                'correct_go': correct_go, 'correct_nogo': correct_nogo,
+                'commission_errors': commission_errors, 'omission_errors': omission_errors,
+            },
+            mistake_types={'inhibition': commission_errors, 'attention': omission_errors},
+            reaction_times=reaction_times,
+            reaction_time=sum(reaction_times) / len(reaction_times) if reaction_times else None,
+            mistakes=commission_errors + omission_errors,
+        )
+        result.save()
+        messages.success(request, 'Результат сохранён!')
+        return redirect('game_dashboard', user_id=child.id)
+    session = GameSession.objects.create(user=child, game_type='GoNoGo')
+    return render(request, 'game_gonogo.html', {'child': child, 'session': session})
+
+
+def game_sort_view(request, user_id):
+    """Сортировка — категоризация (исполнительные функции)"""
+    child = _child_game_check(request, user_id)
+    if not child:
+        return redirect('login')
+    if request.method == 'POST':
+        session_id = request.POST.get('session_id')
+        session = None
+        if session_id:
+            try:
+                session = GameSession.objects.get(id=session_id, user=child)
+            except (GameSession.DoesNotExist, ValueError):
+                pass
+        if session:
+            session.end_time = timezone.now()
+            session.completed = True
+            session.save()
+        data = json.loads(request.POST.get('data', '{}'))
+        correct = data.get('correct', 0)
+        total = data.get('total', 8)
+        reaction_times = data.get('reaction_times', [])
+        result = GameResult(
+            user=child, session=session, game_type='Sort',
+            performance_metrics={'correct': correct, 'total': total},
+            reaction_times=reaction_times,
+            reaction_time=sum(reaction_times) / len(reaction_times) if reaction_times else None,
+            mistakes=total - correct,
+            accuracy=correct / total if total else 0,
+        )
+        result.save()
+        messages.success(request, 'Результат сохранён!')
+        return redirect('game_dashboard', user_id=child.id)
+    session = GameSession.objects.create(user=child, game_type='Sort')
+    return render(request, 'game_sort.html', {'child': child, 'session': session})
+
+
+def game_pattern_view(request, user_id):
+    """Паттерн — заверши последовательность (логическое мышление)"""
+    child = _child_game_check(request, user_id)
+    if not child:
+        return redirect('login')
+    if request.method == 'POST':
+        session_id = request.POST.get('session_id')
+        session = None
+        if session_id:
+            try:
+                session = GameSession.objects.get(id=session_id, user=child)
+            except (GameSession.DoesNotExist, ValueError):
+                pass
+        if session:
+            session.end_time = timezone.now()
+            session.completed = True
+            session.save()
+        data = json.loads(request.POST.get('data', '{}'))
+        correct = data.get('correct', 0)
+        total = data.get('total', 6)
+        reaction_times = data.get('reaction_times', [])
+        result = GameResult(
+            user=child, session=session, game_type='Pattern',
+            performance_metrics={'correct': correct, 'total': total},
+            reaction_times=reaction_times,
+            reaction_time=sum(reaction_times) / len(reaction_times) if reaction_times else None,
+            mistakes=total - correct,
+            accuracy=correct / total if total else 0,
+        )
+        result.save()
+        messages.success(request, 'Результат сохранён!')
+        return redirect('game_dashboard', user_id=child.id)
+    session = GameSession.objects.create(user=child, game_type='Pattern')
+    return render(request, 'game_pattern.html', {'child': child, 'session': session})
+
+
+def game_emotion_match_view(request, user_id):
+    """Эмоция и ситуация — сопоставление (эмоциональный интеллект)"""
+    child = _child_game_check(request, user_id)
+    if not child:
+        return redirect('login')
+    if request.method == 'POST':
+        session_id = request.POST.get('session_id')
+        session = None
+        if session_id:
+            try:
+                session = GameSession.objects.get(id=session_id, user=child)
+            except (GameSession.DoesNotExist, ValueError):
+                pass
+        if session:
+            session.end_time = timezone.now()
+            session.completed = True
+            session.save()
+        data = json.loads(request.POST.get('data', '{}'))
+        correct = data.get('correct', 0)
+        total = data.get('total', 6)
+        choices = data.get('choices', {})
+        emotion_counts = {'joy': 0, 'sorrow': 0, 'love': 0, 'anger': 0, 'boredom': 0, 'happiness': 0}
+        for k, v in choices.items():
+            val = v.get('value', v) if isinstance(v, dict) else v
+            if val in emotion_counts:
+                emotion_counts[val] += 1
+        reaction_times = data.get('reaction_times', [])
+        result = GameResult(
+            user=child, session=session, game_type='EmotionMatch',
+            performance_metrics={'correct': correct, 'total': total},
+            choices=choices,
+            joy=emotion_counts.get('joy', 0),
+            sorrow=emotion_counts.get('sorrow', 0),
+            love=emotion_counts.get('love', 0),
+            anger=emotion_counts.get('anger', 0),
+            boredom=emotion_counts.get('boredom', 0),
+            happiness=emotion_counts.get('happiness', 0),
+            reaction_times=reaction_times,
+            reaction_time=sum(reaction_times) / len(reaction_times) if reaction_times else None,
+            mistakes=total - correct,
+            accuracy=correct / total if total else 0,
+        )
+        result.save()
+        messages.success(request, 'Результат сохранён!')
+        return redirect('game_dashboard', user_id=child.id)
+    session = GameSession.objects.create(user=child, game_type='EmotionMatch')
+    return render(request, 'game_emotion_match.html', {'child': child, 'session': session})
 
 
 # ==================== ПРЕДСТАВЛЕНИЯ ДЛЯ ПРОФИЛЯ ====================
@@ -1243,7 +1801,7 @@ def edit_user_view(request, id):
     
     context = {
         'form': form,
-        'edit_user': user,
+        'user': user,
     }
     
     return render(request, 'edit_user.html', context)

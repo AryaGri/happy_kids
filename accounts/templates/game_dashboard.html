@@ -8,50 +8,125 @@
             <i class="fas fa-key me-2"></i>
             <strong>Мой код для подключения:</strong>
             <code class="fs-5 ms-2 px-2 py-1 bg-white rounded">{{ child.connection_code }}</code>
-            <small class="d-block mt-1 text-muted">Покажи этот код родителю или врачу, чтобы они могли добавить тебя</small>
+            <small class="d-block mt-1 text-muted">Покажи этот код родителю или врачу</small>
         </div>
         <button type="button" class="btn btn-outline-primary btn-sm" onclick="navigator.clipboard.writeText('{{ child.connection_code }}'); this.textContent='Скопировано!'; setTimeout(() => this.textContent='Копировать', 2000)">
             Копировать
         </button>
     </div>
     {% endif %}
-    <form class='form1'>
-        <h2 class="text-center">Выбери игру</h2>
 
-        <div class="row mt-4">
-            {% csrf_token %}
-            <div class="col-md-4">
-                <div class="card text-center">
-                    <img src="{% static 'img/paint_game.jpg' %}" class="card-img-top" alt="Раскраска">
-                    <div class="card-body">
-                        <h5 class="card-title">Раскраска</h5>
-                        <a href="{% url 'painting_game' child.id %}" class="btn btn-primary">Играть</a>
-                    </div>
-                </div>
-            </div>
-            <br>
+    <h2 class="text-center mb-4">Выбери игру</h2>
 
-            <div class="col-md-4">
-                <div class="card text-center">
-                    <img src="{% static 'img/choice_game.jpg' %}" class="card-img-top" alt="Выбор картинки">
-                    <div class="card-body">
-                        <h5 class="card-title">Выбор картинки</h5>
-                        <a href="{% url 'game_choice' child.id %}" class="btn btn-primary">Играть</a>
-                    </div>
-                </div>
-            </div>
-            <br>
-
-            <div class="col-md-4">
-                <div class="card text-center">
-                    <img src="{% static 'img/dialog_game.jpg' %}" class="card-img-top" alt="Диалог">
-                    <div class="card-body">
-                        <h5 class="card-title">Диалог</h5>
-                        <a href="{% url 'game_dialog' child.id %}" class="btn btn-primary">Играть</a>
-                    </div>
+    <div class="row g-3">
+        <div class="col-md-4 col-lg-3">
+            <div class="card h-100 text-center">
+                <div class="card-body py-4">
+                    <h5 class="card-title">🎨 Раскраска</h5>
+                    <p class="card-text small text-muted">Рисуй и выражай себя</p>
+                    <a href="{% url 'painting_game' child.id %}" class="btn btn-primary">Играть</a>
                 </div>
             </div>
         </div>
-    </form>
+        <div class="col-md-4 col-lg-3">
+            <div class="card h-100 text-center">
+                <div class="card-body py-4">
+                    <h5 class="card-title">📖 Один день</h5>
+                    <p class="card-text small text-muted">Собери историю про день котёнка</p>
+                    <a href="{% url 'game_choice' child.id %}" class="btn btn-primary">Играть</a>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4 col-lg-3">
+            <div class="card h-100 text-center">
+                <div class="card-body py-4">
+                    <h5 class="card-title">🖼️ Собери картинку</h5>
+                    <p class="card-text small text-muted">Выбери, что добавить</p>
+                    <a href="{% url 'game_dialog' child.id %}" class="btn btn-primary">Играть</a>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4 col-lg-3">
+            <div class="card h-100 text-center">
+                <div class="card-body py-4">
+                    <h5 class="card-title">🃏 Память</h5>
+                    <p class="card-text small text-muted">Найди пары карточек</p>
+                    <a href="{% url 'game_memory' child.id %}" class="btn btn-primary">Играть</a>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4 col-lg-3">
+            <div class="card h-100 text-center">
+                <div class="card-body py-4">
+                    <h5 class="card-title">🧩 Головоломка</h5>
+                    <p class="card-text small text-muted">Собери числа по порядку</p>
+                    <a href="{% url 'game_puzzle' child.id %}" class="btn btn-primary">Играть</a>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4 col-lg-3">
+            <div class="card h-100 text-center">
+                <div class="card-body py-4">
+                    <h5 class="card-title">🎵 Последовательность</h5>
+                    <p class="card-text small text-muted">Повтори паттерн</p>
+                    <a href="{% url 'game_sequence' child.id %}" class="btn btn-primary">Играть</a>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4 col-lg-3">
+            <div class="card h-100 text-center">
+                <div class="card-body py-4">
+                    <h5 class="card-title">🔷 Найди пару</h5>
+                    <p class="card-text small text-muted">Найди такую же фигуру</p>
+                    <a href="{% url 'game_emotion_face' child.id %}" class="btn btn-primary">Играть</a>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4 col-lg-3">
+            <div class="card h-100 text-center">
+                <div class="card-body py-4">
+                    <h5 class="card-title">👀 Внимание</h5>
+                    <p class="card-text small text-muted">Найди звёздочку</p>
+                    <a href="{% url 'game_attention' child.id %}" class="btn btn-primary">Играть</a>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4 col-lg-3">
+            <div class="card h-100 text-center">
+                <div class="card-body py-4">
+                    <h5 class="card-title">🛑 Стоп-игра</h5>
+                    <p class="card-text small text-muted">Зелёный — нажми, красный — стоп</p>
+                    <a href="{% url 'game_gonogo' child.id %}" class="btn btn-primary">Играть</a>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4 col-lg-3">
+            <div class="card h-100 text-center">
+                <div class="card-body py-4">
+                    <h5 class="card-title">📦 Сортировка</h5>
+                    <p class="card-text small text-muted">Разложи по категориям</p>
+                    <a href="{% url 'game_sort' child.id %}" class="btn btn-primary">Играть</a>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4 col-lg-3">
+            <div class="card h-100 text-center">
+                <div class="card-body py-4">
+                    <h5 class="card-title">🔢 Паттерн</h5>
+                    <p class="card-text small text-muted">Продолжи последовательность</p>
+                    <a href="{% url 'game_pattern' child.id %}" class="btn btn-primary">Играть</a>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4 col-lg-3">
+            <div class="card h-100 text-center">
+                <div class="card-body py-4">
+                    <h5 class="card-title">🖼️ Выбери картинку</h5>
+                    <p class="card-text small text-muted">Какая тебе нравится?</p>
+                    <a href="{% url 'game_emotion_match' child.id %}" class="btn btn-primary">Играть</a>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 {% endblock %}

@@ -28,6 +28,7 @@ urlpatterns = [
 
     # Врач
     path('doctor_dashboard/', views.doctor_dashboard_view, name='doctor_dashboard'),
+    path('doctor/license/edit/', views.doctor_license_edit_view, name='doctor_license_edit'),
     path('doctor/patient/<int:patient_id>/analysis/', views.doctor_analysis_view, name='doctor_analysis'),
     path('doctor/patient/<int:patient_id>/session/<int:session_id>/', views.patient_game_session_view, name='doctor_patient_session'),
     path('doctor/export-patient/<int:patient_id>/', views.export_patient_data_view, name='doctor_export_patient'),
@@ -37,12 +38,22 @@ urlpatterns = [
     path('parent_dashboard/<int:user_id>/', views.parent_dashboard_view, name='parent_dashboard'),
     path('parent/<int:user_id>/child/<int:child_id>/', views.parent_child_detail_view, name='parent_child_detail'),
     path('child/<int:child_id>/', views.child_detail_for_parent_view, name='child_detail'),
+    path('child/<int:child_id>/prescriptions/download/', views.parent_download_prescriptions_view, name='parent_download_prescriptions'),
 
     # Ребёнок / Игры
     path('game_dashboard/<int:user_id>/', views.game_dashboard_view, name='game_dashboard'),
     path('game_dashboard/<int:user_id>/game_painting', views.game_painting_view, name='painting_game'),
     path('game_dashboard/<int:user_id>/game_dialog/', views.game_dialog_view, name='game_dialog'),
     path('game_dashboard/<int:user_id>/game_choice/', views.game_choice_view, name='game_choice'),
+    path('game_dashboard/<int:user_id>/game_memory/', views.game_memory_view, name='game_memory'),
+    path('game_dashboard/<int:user_id>/game_puzzle/', views.game_puzzle_view, name='game_puzzle'),
+    path('game_dashboard/<int:user_id>/game_sequence/', views.game_sequence_view, name='game_sequence'),
+    path('game_dashboard/<int:user_id>/game_emotion_face/', views.game_emotion_face_view, name='game_emotion_face'),
+    path('game_dashboard/<int:user_id>/game_attention/', views.game_attention_view, name='game_attention'),
+    path('game_dashboard/<int:user_id>/game_gonogo/', views.game_gonogo_view, name='game_gonogo'),
+    path('game_dashboard/<int:user_id>/game_sort/', views.game_sort_view, name='game_sort'),
+    path('game_dashboard/<int:user_id>/game_pattern/', views.game_pattern_view, name='game_pattern'),
+    path('game_dashboard/<int:user_id>/game_emotion_match/', views.game_emotion_match_view, name='game_emotion_match'),
     path('game/painting/<int:user_id>/', views.game_painting_view, name='game_painting'),
 
     # API для игр (POST)

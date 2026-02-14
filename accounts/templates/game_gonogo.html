@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}Стоп-игра — {{ child.name }}{% endblock %}
+{% block extra_css %}
+<style>
+    .gonogo-field {
+        width: 320px;
+        height: 200px;
+        margin: 0 auto 20px;
+        border: 3px solid #dee2e6;
+        border-radius: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 4rem;
+        cursor: pointer;
+        transition: background 0.2s;
+        background: #f5f5f5;
+    }
+</style>
+{% endblock %}
+{% block content %}
+<div class="container text-center" style="max-width:400px;">
+    <h4 class="mb-3">🛑 Стоп-игра</h4>
+    <p class="text-muted">Нажимай на <span class="text-success">зелёный</span>, НЕ нажимай на <span class="text-danger">красный</span></p>
+    <form method="post" id="gameForm">
+        {% csrf_token %}
+        <input type="hidden" name="session_id" value="{{ session.id }}">
+        <input type="hidden" name="data" id="dataInput">
+        <div id="targetArea" class="gonogo-field"></div>
+        <button type="submit" class="btn btn-success w-100" id="submitBtn" style="display:none;">Готово!</button>
+    </form>
+    <a href="{% url 'game_dashboard' child.id %}" class="d-block mt-2">← Назад</a>
+</div>
+<script>
+let correctGo=0, correctNogo=0, commissionErrors=0, omissionErrors=0, reactionTimes=[], round=0, maxRounds=20, isGo=false, startTime, omissionTimer, nextTimer;
+const area = document.getElementById('targetArea');
+function next() {
+    area.textContent = '';
+    area.style.background = '#f5f5f5';
+    isGo = Math.random() > 0.3;
+    nextTimer = setTimeout(() => {
+        if (isGo) {
+            area.innerHTML = '<span style="color:green">●</span>';
+            area.style.background = '#e8f5e9';
+            startTime = Date.now();
+            omissionTimer = setTimeout(() => { omissionErrors++; }, 700);
+        } else {
+            area.innerHTML = '<span style="color:red">●</span>';
+            area.style.background = '#ffebee';
+        }
+        round++;
+        if (round >= maxRounds) {
+            document.getElementById('submitBtn').style.display = 'block';
+            area.textContent = 'Готово!';
+            area.onclick = null;
+            return;
+        }
+        nextTimer = setTimeout(next, 1200);
+    }, 800 + Math.random()*600);
+}
+area.onclick = () => {
+    if (!area.textContent.includes('●')) return;
+    if (isGo) {
+        clearTimeout(omissionTimer);
+        correctGo++;
+        reactionTimes.push(Date.now() - startTime);
+    } else {
+        commissionErrors++;
+        clearTimeout(omissionTimer);
+        clearTimeout(nextTimer);
+        document.getElementById('submitBtn').style.display = 'block';
+        area.textContent = 'Игра окончена';
+        area.onclick = null;
+        return;
+    }
+};
+next();
+document.getElementById('gameForm').onsubmit = () => {
+    document.getElementById('dataInput').value = JSON.stringify({
+        correct_go: correctGo, correct_nogo: correctNogo,
+        commission_errors: commissionErrors, omission_errors: omissionErrors,
+        reaction_times: reactionTimes
+    });
+};
+</script>
+{% endblock %}

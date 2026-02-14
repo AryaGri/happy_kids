@@ -109,11 +109,17 @@ class GameSession(models.Model):
     user = models.ForeignKey(CUsers, on_delete=models.CASCADE, related_name='game_sessions')
     game_type = models.CharField(max_length=20, choices=[
         ('Painting', 'Раскраска'),
-        ('Dialog', 'Диалог'),
-        ('Choice', 'Выбор'),
-        ('Puzzle', 'Головоломка'),
+        ('Dialog', 'Эмоциональный диалог'),
+        ('Choice', 'Эмоциональные сценарии'),
         ('Memory', 'Память'),
-        ('Adventure', 'Приключение'),
+        ('Puzzle', 'Головоломка'),
+        ('Sequence', 'Последовательность'),
+        ('EmotionFace', 'Узнай эмоцию'),
+        ('Attention', 'Внимание'),
+        ('GoNoGo', 'Стоп-игра'),
+        ('Sort', 'Сортировка'),
+        ('Pattern', 'Паттерн'),
+        ('EmotionMatch', 'Эмоция и ситуация'),
     ])
     start_time = models.DateTimeField(auto_now_add=True)
     end_time = models.DateTimeField(null=True, blank=True)
@@ -149,8 +155,17 @@ class GameResult(models.Model):
     session = models.ForeignKey(GameSession, on_delete=models.CASCADE, null=True, blank=True, related_name='results')
     game_type = models.CharField(max_length=20, choices=[
         ('Painting', 'Раскраска'),
-        ('Dialog', 'Диалог'),
-        ('Choice', 'Выбор'),
+        ('Dialog', 'Эмоциональный диалог'),
+        ('Choice', 'Эмоциональные сценарии'),
+        ('Memory', 'Память'),
+        ('Puzzle', 'Головоломка'),
+        ('Sequence', 'Последовательность'),
+        ('EmotionFace', 'Узнай эмоцию'),
+        ('Attention', 'Внимание'),
+        ('GoNoGo', 'Стоп-игра'),
+        ('Sort', 'Сортировка'),
+        ('Pattern', 'Паттерн'),
+        ('EmotionMatch', 'Эмоция и ситуация'),
     ])
     
     # Эмоциональные показатели
@@ -225,7 +240,7 @@ class GameResult(models.Model):
 class Prescription(models.Model):
     """Рецепт/назначение врача"""
     child = models.ForeignKey(CUsers, on_delete=models.CASCADE, related_name='prescriptions')
-    doctor = models.ForeignKey(CUsers, on_delete=models.CASCADE, related_name='prescriptions_written', limit_choices_to={'role': 'doctor'})
+    doctor = models.ForeignKey(CUsers, on_delete=models.CASCADE, related_name='prescriptions_written', limit_choices_to={'role': 'doctor'}, null=True, blank=True)
     text = models.TextField('текст назначения')
     
     # Типы назначений
@@ -329,17 +344,29 @@ class DiagnosticProfile(models.Model):
     # Рекомендации на основе анализа
     recommendations = models.TextField('рекомендации', blank=True)
     
+    # Выявленные диагнозы/состояния (коды из DiagnosticDiagnosis)
+    detected_diagnoses = models.JSONField('выявленные диагнозы', default=list)
+    
     # Ссылка на сырые данные
     based_on_sessions = models.ManyToManyField(GameSession, blank=True, related_name='profiles')
     
     def get_radar_data(self):
-        """Получение данных для радарной диаграммы (значения для 'высокой' принадлежности)"""
+        """Данные для радарной диаграммы: взвешенная комбинация термов (0-100)"""
+        def to_score(d, low_key, mid_key, high_key):
+            low = d.get(low_key, 0)
+            mid = d.get(mid_key, 0)
+            high = d.get(high_key, 0)
+            total = low + mid + high
+            if total < 0.01:
+                return 30
+            return (low * 15 + mid * 50 + high * 95) / total
+        
         return {
-            'diagnostic_depth': self.diagnostic_depth.get('высокая', 0) * 100,
-            'motivational_potential': self.motivational_potential.get('высокий', 0) * 100,
-            'objectivity': self.objectivity.get('высокая', 0) * 100,
-            'ecological_validity': self.ecological_validity.get('высокая', 0) * 100,
-            'dynamic_assessment': self.dynamic_assessment.get('широкий', 0) * 100,
+            'diagnostic_depth': to_score(self.diagnostic_depth, 'низкая', 'средняя', 'высокая'),
+            'motivational_potential': to_score(self.motivational_potential, 'низкий', 'умеренный', 'высокий'),
+            'objectivity': to_score(self.objectivity, 'низкая', 'средняя', 'высокая'),
+            'ecological_validity': to_score(self.ecological_validity, 'низкая', 'средняя', 'высокая'),
+            'dynamic_assessment': to_score(self.dynamic_assessment, 'ограниченный', 'умеренный', 'широкий'),
         }
     
     def get_emotional_summary(self):
@@ -363,6 +390,38 @@ class DiagnosticProfile(models.Model):
         verbose_name = 'Диагностический профиль'
         verbose_name_plural = 'Диагностические профили'
         ordering = ['-date_created']
+
+
+class DiagnosticDiagnosis(models.Model):
+    """Диагнозы/эмоциональные состояния по показателям нечёткой логики (только для врача)"""
+    name = models.CharField('название', max_length=150)
+    code = models.CharField('код', max_length=50, unique=True, help_text='Уникальный код для сопоставления')
+    
+    # Условия по нечётким показателям (JSON: {'diagnostic_depth.высокая': 0.7, 'emotional_profile.гнев': 0.4})
+    fuzzy_conditions = models.JSONField('условия', default=dict)
+    
+    # Рекомендации по умолчанию
+    default_recommendations = models.TextField('рекомендации по умолчанию')
+    
+    # Назначения по умолчанию (тип и текст)
+    default_prescription_type = models.CharField('тип назначения', max_length=50, choices=[
+        ('medication', 'Лекарство'),
+        ('therapy', 'Терапия'),
+        ('exercise', 'Упражнение'),
+        ('recommendation', 'Рекомендация'),
+    ], default='recommendation')
+    default_prescription_text = models.TextField('текст назначения по умолчанию', blank=True)
+    
+    # Приоритет (меньше = важнее)
+    priority = models.IntegerField('приоритет', default=0)
+    
+    def __str__(self):
+        return self.name
+    
+    class Meta:
+        verbose_name = 'Диагностический диагноз'
+        verbose_name_plural = 'Диагностические диагнозы'
+        ordering = ['priority', 'name']
 
 
 class FuzzyInferenceRule(models.Model):

@@ -15,8 +15,11 @@
     <style>
         html, body { height: 100%; margin: 0; display: flex; flex-direction: column; }
         body { font-family: 'Muller', system-ui, sans-serif; background-color: #f8f9fa; color: #343a40; }
-        main { flex: 1; display: flex; flex-direction: column; padding: 20px; }
-        main .main-content { flex: 1; width: 100%; max-width: 1200px; margin: 0 auto; }
+        main { flex: 1; display: flex; flex-direction: column; padding: 0; }
+        main .main-content { flex: 1; width: 100%; max-width: 1200px; margin: 0 auto; padding: 20px; }
+        main.main-fullwidth .main-content { max-width: none; padding: 0; width: 100%; }
+        .full-width-image { width: 100%; display: block; object-fit: cover; max-height: 70vh; }
+        .hero-placeholder { display: none; }
         .navbar-brand img { max-height: 60px; }
         .nav-link { color: rgba(0,0,0,0.8) !important; }
         .nav-link:hover { color: #198754 !important; }
@@ -48,7 +51,6 @@
                     {% if request.session.user_role == 'admin' %}
                     <li class="nav-item"><a class="nav-link" href="{% url 'admin_dashboard' %}"><i class="fas fa-tachometer-alt me-1"></i>Панель</a></li>
                     <li class="nav-item"><a class="nav-link" href="{% url 'admin_verify_licenses' %}"><i class="fas fa-id-card me-1"></i>Лицензии</a></li>
-                    <li class="nav-item"><a class="nav-link" href="{% url 'admin_statistics' %}"><i class="fas fa-chart-bar me-1"></i>Статистика</a></li>
                     <li class="nav-item"><a class="nav-link" href="{% url 'admin_bulk_assign' %}"><i class="fas fa-users me-1"></i>Назначения</a></li>
                     {% elif request.session.user_role == 'doctor' %}
                     <li class="nav-item"><a class="nav-link" href="{% url 'doctor_dashboard' %}"><i class="fas fa-tachometer-alt me-1"></i>Панель</a></li>
@@ -104,7 +106,7 @@
     {% endif %}
 
     <!-- Основной контент -->
-    <main>
+    <main {% block main_attr %}class="main-default"{% endblock %}>
         <div class="main-content">
             {% block content %}
             {% endblock %}

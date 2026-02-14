@@ -19,7 +19,7 @@
         body { background: white; }
     }
     .term-badge { font-size: 0.85rem; }
-    .radar-container { position: relative; height: 350px; }
+    .radar-container { position: relative; height: 520px; width: 100%; max-width: 700px; margin: 0 auto; }
 </style>
 
 <div class="analysis-container">
@@ -44,15 +44,6 @@
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M2.5 8a.5.5 0 1 0 0-1 .5.5 0 0 0 0 1z"/><path d="M5 1a2 2 0 0 0-2 2v2H2a2 2 0 0 0-2 2v3a2 2 0 0 0 2 2h1v1a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-1h1a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-1V3a2 2 0 0 0-2-2H5zM4 3a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2H4V3zm1 5a2 2 0 0 0-2 2v1H2a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v-1a2 2 0 0 0-2-2H5zm7 2v3a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1z"/></svg>
                 Печать
             </button>
-        </div>
-    </div>
-
-    <!-- Индикатор использования нечёткой логики -->
-    <div class="alert alert-info d-flex align-items-center mb-4" role="alert">
-        <span class="me-2">📊</span>
-        <div>
-            <strong>Анализ выполнен с использованием нечёткой логики</strong>
-            <p class="mb-0 small">Диагностический профиль, принадлежность к термам, радарная диаграмма и рекомендации рассчитаны модулем FuzzyAnalyzer на основе лингвистических переменных и правил нечёткого вывода (НИР, раздел 3.1.3).</p>
         </div>
     </div>
 
@@ -207,6 +198,26 @@
             {% endif %}
         </div>
     </div>
+
+    {% if detected_diagnoses %}
+    <!-- 5a. Выявленные состояния -->
+    <div class="card mb-4 shadow-sm">
+        <div class="card-header bg-warning text-dark">
+            <h5 class="mb-0">Выявленные состояния</h5>
+        </div>
+        <div class="card-body">
+            {% for diag in detected_diagnoses %}
+            <div class="mb-3 pb-3 {% if not forloop.last %}border-bottom{% endif %}">
+                <h6 class="text-primary">{{ diag.name }}</h6>
+                <p class="mb-1">{{ diag.default_recommendations }}</p>
+                {% if diag.default_prescription_text %}
+                <p class="mb-0 small text-muted"><strong>Назначение по умолчанию:</strong> {{ diag.default_prescription_text }}</p>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
 
     <!-- 6. Рекомендации -->
     <div class="card mb-4 shadow-sm">

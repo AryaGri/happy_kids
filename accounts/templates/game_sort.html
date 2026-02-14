@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Сортировка — {{ child.name }}{% endblock %}
+{% block content %}
+<div class="container" style="max-width:500px;">
+    <h4 class="text-center mb-3">📦 Сортировка</h4>
+    <p class="text-center text-muted">Разложи предметы по корзинам</p>
+    <form method="post" id="gameForm">
+        {% csrf_token %}
+        <input type="hidden" name="session_id" value="{{ session.id }}">
+        <input type="hidden" name="data" id="dataInput">
+        <div class="row mb-3">
+            <div class="col-6 text-center p-2 border rounded" id="basket1" data-cat="fruit">🍎 Фрукты</div>
+            <div class="col-6 text-center p-2 border rounded" id="basket2" data-cat="animal">🐱 Животные</div>
+        </div>
+        <div class="d-flex flex-wrap gap-2 justify-content-center" id="items"></div>
+        <button type="submit" class="btn btn-success w-100" id="submitBtn" style="display:none;">Готово!</button>
+    </form>
+    <a href="{% url 'game_dashboard' child.id %}" class="d-block text-center mt-2">← Назад</a>
+</div>
+<script>
+const ITEMS_RAW = [
+    { e: '🍎', cat: 'fruit' }, { e: '🍊', cat: 'fruit' }, { e: '🐱', cat: 'animal' }, { e: '🐶', cat: 'animal' },
+    { e: '🍇', cat: 'fruit' }, { e: '🐰', cat: 'animal' }, { e: '🍌', cat: 'fruit' }, { e: '🐻', cat: 'animal' },
+];
+let ITEMS = [];
+let idx = 0, correct = 0, reactionTimes = [];
+const BASKETS = [
+    { cat: 'fruit', label: '🍎 Фрукты' },
+    { cat: 'animal', label: '🐱 Животные' }
+];
+let basketOrder = [];
+function shuffle(a) { for (let i=a.length-1; i>0; i--) { const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
+function show() {
+    const item = ITEMS[idx];
+    const start = Date.now();
+    const btns = shuffle([...basketOrder]).map(b =>
+        `<button type="button" class="btn btn-lg btn-outline-secondary" data-cat="${b.cat}">${b.label}</button>`
+    ).join('');
+    document.getElementById('items').innerHTML = btns;
+    document.getElementById('items').insertAdjacentHTML('afterbegin', `<span class="align-self-center mx-2" style="font-size:2.5rem">${item.e}</span>`);
+    document.getElementById('items').querySelectorAll('button').forEach(btn => {
+        btn.onclick = () => {
+            reactionTimes.push(Date.now() - start);
+            const isCorrect = btn.dataset.cat === item.cat;
+            if (isCorrect) correct++;
+            idx++;
+            if (!isCorrect || idx >= ITEMS.length) {
+                document.getElementById('submitBtn').style.display = 'block';
+                document.getElementById('items').innerHTML = isCorrect ? '<p class="text-success">Готово!</p>' : '<p class="text-muted">Игра окончена</p>';
+            } else show();
+        };
+    });
+}
+ITEMS = shuffle([...ITEMS_RAW]);
+basketOrder = shuffle([...BASKETS]);
+document.getElementById('basket1').textContent = basketOrder[0].label;
+document.getElementById('basket1').dataset.cat = basketOrder[0].cat;
+document.getElementById('basket2').textContent = basketOrder[1].label;
+document.getElementById('basket2').dataset.cat = basketOrder[1].cat;
+show();
+document.getElementById('gameForm').onsubmit = () => {
+    document.getElementById('dataInput').value = JSON.stringify({
+        correct, total: ITEMS.length, reaction_times: reactionTimes
+    });
+};
+</script>
+{% endblock %}

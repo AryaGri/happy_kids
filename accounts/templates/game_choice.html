@@ -1,90 +1,244 @@
 {% extends "base.html" %}
 {% load static %}
-{% block content %}
+{% block title %}Собери комикс — {{ child.name }}{% endblock %}
 
+{% block extra_css %}
 <style>
-    .image-selection {
-        display: flex;
-        flex-wrap: wrap;
-        justify-content: space-around;
-    }
-
-    .image-item {
-        margin: 10px;
-    }
-
-    .image-choice {
-        width: 100px;
-        height: auto;
-        cursor: pointer;
-    }
+    .comic-game { max-width: 600px; margin: 0 auto; background: linear-gradient(135deg, #e3f2fd 0%, #f3e5f5 100%); border-radius: 24px; padding: 28px; box-shadow: 0 12px 40px rgba(0,0,0,0.1); }
+    .comic-card { background: white; border-radius: 20px; padding: 24px; margin-bottom: 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
+    .comic-scene { font-size: 2.5rem; text-align: center; margin-bottom: 8px; }
+    .comic-text { font-size: 1rem; color: #555; text-align: center; margin-bottom: 12px; line-height: 1.4; }
+    .comic-options { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
+    .comic-option { min-width: 100px; padding: 12px 16px; border-radius: 16px; background: #f5f5f5; border: 3px solid #e0e0e0; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 1.8rem; cursor: pointer; transition: all 0.25s; }
+    .comic-option span { font-size: 0.75rem; color: #666; margin-top: 4px; text-align: center; }
+    .comic-option:hover { background: #fff3e0; border-color: #ff9800; transform: scale(1.08); }
+    .comic-option.selected { background: linear-gradient(135deg, #ff9800, #f57c00); border-color: #e65100; }
+    .progress-dots { display: flex; justify-content: center; gap: 8px; margin-bottom: 20px; }
+    .progress-dot { width: 10px; height: 10px; border-radius: 50%; background: rgba(0,0,0,0.2); }
+    .progress-dot.done { background: #4caf50; }
+    .progress-dot.current { background: #ff9800; transform: scale(1.3); }
+    .btn-submit { background: linear-gradient(135deg, #4caf50, #388e3c); color: white !important; border: none; padding: 16px; border-radius: 16px; font-size: 1.1rem; font-weight: 600; width: 100%; }
 </style>
+{% endblock %}
 
-<h1>Выберите картинки</h1>
+{% block content %}
+<div class="comic-game">
+    <h4 class="text-center mb-2" style="color:#7b1fa2;">📖 Один день</h4>
+    <p class="text-center text-muted mb-4">Собери историю: выбери, что произошло дальше</p>
 
-<!-- Форма для выбора картинок -->
-<form method="post" class='form1'>
-    {% csrf_token %}
-    <input type="hidden" name="session_id" value="{{ session.id }}">
+    <div class="progress-dots" id="progressDots"></div>
 
-    <div class="round">
-        <h2>Раунд 1</h2>
-        <div class="image-selection">
-            {% for image in round_1_images %}
-                <div class="image-item">
-                    <input type="radio" id="image_{{ forloop.counter }}" name="round_1" value="{{ image }}">
-                    <label for="image_{{ forloop.counter }}">
-                        <img src="{% static 'images/'|add:image %}" class="image-choice" alt="Раунд 1, изображение {{ forloop.counter }}">
-                    </label>
-                </div>
-            {% endfor %}
+    <form method="post" id="choiceForm">
+        {% csrf_token %}
+        <input type="hidden" name="session_id" value="{{ session.id }}">
+        <div id="comicContent"></div>
+        <div class="d-flex gap-2 mt-3">
+            <button type="button" class="btn btn-outline-secondary" id="prevBtn" style="display:none;">← Назад</button>
+            <button type="button" class="btn btn-primary flex-grow-1" id="nextBtn">Дальше →</button>
         </div>
-    </div>
+        <button type="submit" class="btn btn-submit mt-3" id="submitBtn" style="display:none;">Готово!</button>
+    </form>
 
-    <div class="round">
-        <h2>Раунд 2</h2>
-        <div class="image-selection">
-            {% for image in round_2_images %}
-                <div class="image-item">
-                    <input type="radio" id="image_{{ forloop.counter }}" name="round_2" value="{{ image }}">
-                    <label for="image_{{ forloop.counter }}">
-                        <img src="{% static 'images/'|add:image %}" class="image-choice" alt="Раунд 2, изображение {{ forloop.counter }}">
-                    </label>
-                </div>
-            {% endfor %}
-        </div>
+    <div class="text-center mt-3">
+        <a href="{% url 'game_dashboard' child.id %}" id="backToDashboard" class="text-dark">← Назад к играм</a>
     </div>
-
-    <div class="round">
-        <h2>Раунд 3</h2>
-        <div class="image-selection">
-            {% for image in round_3_images %}
-                <div class="image-item">
-                    <input type="radio" id="image_{{ forloop.counter }}" name="round_3" value="{{ image }}">
-                    <label for="image_{{ forloop.counter }}">
-                        <img src="{% static 'images/'|add:image %}" class="image-choice" alt="Раунд 3, изображение {{ forloop.counter }}">
-                    </label>
-                </div>
-            {% endfor %}
-        </div>
-    </div>
-
-    <button type="submit">Сохранить выбор</button>
-    <a href="{% url 'game_dashboard' child.id %}" class="btn btn-secondary ms-2">Назад к дашборду</a>
-</form>
+</div>
 
 <script>
-    // Делаем картинку темнее при нажатии
-    document.querySelectorAll('.image-choice').forEach(function(img) {
-        img.addEventListener('click', function() {
-            // Снимаем эффект с других изображений
-            document.querySelectorAll('.image-choice').forEach(function(img) {
-                img.style.filter = 'brightness(100%)';
-            });
-            // Делаем выбранное изображение темнее
-            this.style.filter = 'brightness(50%)';
-        });
-    });
-</script>
+const SCENARIOS = [
+[
+    { text: "Утро. Котёнок проснулся в своей корзинке.", scene: "🐱 ☀️", opts: [
+        { e: "😊", t: "Потянулся и улыбнулся", v: "joy" },
+        { e: "🏃", t: "Вскочил и побежал", v: "happiness" },
+        { e: "😴", t: "Закрыл глаза снова", v: "boredom" },
+        { e: "😐", t: "Нехотя поднялся", v: "sorrow" }
+    ]},
+    { text: "Позавтракал молочком. Котёнок...", scene: "🐱 🥛", opts: [
+        { e: "🫰", t: "Поблагодарил и ушёл", v: "love" },
+        { e: "🐾", t: "Потрогал лапкой миску", v: "joy" },
+        { e: "🎾", t: "Побежал играть с мячиком", v: "happiness" },
+        { e: "🪟", t: "Подошёл к окну", v: "boredom" }
+    ]},
+    { text: "Днём вышел во двор. Там сидел другой котёнок.", scene: "🐱 🐱", opts: [
+        { e: "🤗", t: "Подбежал и обнял", v: "love" },
+        { e: "👋", t: "Помахал лапкой", v: "joy" },
+        { e: "🏃", t: "Побежал играть вместе", v: "happiness" },
+        { e: "😐", t: "Прошёл мимо", v: "boredom" }
+    ]},
+    { text: "Играли в догонялки. Потом друг ушёл домой.", scene: "🐱 👋", opts: [
+        { e: "👋", t: "Помахал на прощание", v: "love" },
+        { e: "😔", t: "Пригорюнился", v: "sorrow" },
+        { e: "🎮", t: "Побежал играть дальше", v: "happiness" },
+        { e: "🥱", t: "Зевнул и пошёл домой", v: "boredom" }
+    ]},
+    { text: "Вечер. Котёнок дома. День закончился.", scene: "🐱 🌙", opts: [
+        { e: "🛋️", t: "Уютно свернулся на диване", v: "love" },
+        { e: "🌙", t: "Смотрит в окно на луну", v: "sorrow" },
+        { e: "😊", t: "Доволен, что был хороший день", v: "joy" },
+        { e: "📖", t: "Слушает сказку перед сном", v: "happiness" }
+    ]},
+],
+[
+    { text: "Утро. Зайчик проснулся в своей норке.", scene: "🐰 ☀️", opts: [
+        { e: "😊", t: "Потянулся и улыбнулся", v: "joy" },
+        { e: "🥕", t: "Подумал про завтрак", v: "happiness" },
+        { e: "😴", t: "Ещё пять минуточек...", v: "boredom" },
+        { e: "🪟", t: "Посмотрел на солнце", v: "sorrow" }
+    ]},
+    { text: "Позавтракал морковкой. Зайчик...", scene: "🐰 🥕", opts: [
+        { e: "👍", t: "Было вкусно!", v: "joy" },
+        { e: "🏃", t: "Побежал в сад", v: "happiness" },
+        { e: "🐇", t: "Позвал друга", v: "love" },
+        { e: "😐", t: "Сидел и думал", v: "boredom" }
+    ]},
+    { text: "В саду зайчик встретил ёжика.", scene: "🐰 🦔", opts: [
+        { e: "🤗", t: "Обрадовался и обнял", v: "love" },
+        { e: "🍎", t: "Угостил яблоком", v: "joy" },
+        { e: "🏃", t: "Предложил побегать", v: "happiness" },
+        { e: "👋", t: "Помахал и пошёл дальше", v: "boredom" }
+    ]},
+    { text: "Играли в прятки. Ёжик спрятался и не вышел.", scene: "🐰 🤔", opts: [
+        { e: "😄", t: "Искал и смеялся", v: "joy" },
+        { e: "😔", t: "Загрустил", v: "sorrow" },
+        { e: "🔍", t: "Продолжил искать", v: "happiness" },
+        { e: "🏠", t: "Пошёл домой", v: "boredom" }
+    ]},
+    { text: "Вечер. Зайчик вернулся в норку.", scene: "🐰 🌙", opts: [
+        { e: "🛏️", t: "Улёгся в кроватку", v: "love" },
+        { e: "😊", t: "Вспоминал весёлый день", v: "joy" },
+        { e: "📖", t: "Взял книжку", v: "happiness" },
+        { e: "🌙", t: "Смотрел на звёзды", v: "sorrow" }
+    ]},
+],
+[
+    { text: "Утро. Щенок проснулся в будке.", scene: "🐶 ☀️", opts: [
+        { e: "🐕", t: "Встряхнулся и побежал", v: "happiness" },
+        { e: "😊", t: "Вилял хвостом", v: "joy" },
+        { e: "😴", t: "Зевнул и потянулся", v: "boredom" },
+        { e: "🪵", t: "Погрыз палку", v: "sorrow" }
+    ]},
+    { text: "Хозяин дал завтрак. Щенок...", scene: "🐶 🍖", opts: [
+        { e: "🫰", t: "Поблагодарил", v: "love" },
+        { e: "😋", t: "Съел с аппетитом", v: "joy" },
+        { e: "🎾", t: "Попросил мячик", v: "happiness" },
+        { e: "😐", t: "Поел и лёг", v: "boredom" }
+    ]},
+    { text: "На прогулке щенок увидел кошку.", scene: "🐶 🐱", opts: [
+        { e: "🤝", t: "Подошёл познакомиться", v: "love" },
+        { e: "🏃", t: "Побежал играть", v: "joy" },
+        { e: "😤", t: "Залетел", v: "anger" },
+        { e: "🚶", t: "Прошёл мимо", v: "boredom" }
+    ]},
+    { text: "Кошка убежала на дерево. Щенок...", scene: "🐶 🌳", opts: [
+        { e: "😔", t: "Обиделся", v: "sorrow" },
+        { e: "🐕", t: "Помахал хвостом и ушёл", v: "joy" },
+        { e: "🏃", t: "Побежал к хозяину", v: "happiness" },
+        { e: "🪵", t: "Нашёл палку", v: "boredom" }
+    ]},
+    { text: "Вечер. Щенок дома. День был долгий.", scene: "🐶 🌙", opts: [
+        { e: "🛋️", t: "Улёгся у ног хозяина", v: "love" },
+        { e: "😊", t: "Доволен прогулкой", v: "joy" },
+        { e: "😴", t: "Засыпает", v: "happiness" },
+        { e: "🪵", t: "Грызёт любимую палку", v: "boredom" }
+    ]},
+],
+];
+function shuffle(arr) { for (let i=arr.length-1; i>0; i--) { const j=Math.floor(Math.random()*(i+1)); [arr[i],arr[j]]=[arr[j],arr[i]]; } return arr; }
+let ROUNDS = SCENARIOS[Math.floor(Math.random() * SCENARIOS.length)];
+let current = 0;
+const total = 5;
+let reactionTimes = [];
+let choices = {};
 
+for (let i = 0; i < total; i++) {
+    document.getElementById('progressDots').innerHTML += `<span class="progress-dot" id="dot${i+1}"></span>`;
+}
+
+function showRound(n) {
+    const r = ROUNDS[n];
+    const order = shuffle([0,1,2,3]);
+    const optsHtml = order.map(i => {
+        const o = r.opts[i];
+        return `<label class="comic-option"><input type="radio" name="round_${n+1}" value="${o.v}" data-text="${o.t.replace(/"/g, '&quot;')}" style="display:none">${o.e}<span>${o.t}</span></label>`;
+    }).join('');
+    document.getElementById('comicContent').innerHTML = `
+        <div class="comic-card">
+            <p class="comic-text">${r.text}</p>
+            <div class="comic-scene">${r.scene}</div>
+            <p class="comic-text mb-3">Что произошло дальше?</p>
+            <div class="comic-options">${optsHtml}</div>
+        </div>
+    `;
+
+    document.getElementById('nextBtn').disabled = true;
+    document.getElementById('submitBtn').disabled = true;
+    const prevChoice = choices['round_' + (n+1)];
+    const prevVal = prevChoice && (typeof prevChoice === 'object' ? prevChoice.value : prevChoice);
+    document.querySelectorAll('.comic-option').forEach(opt => {
+        const inp = opt.querySelector('input');
+        if (prevVal && prevVal === inp.value) {
+            opt.classList.add('selected');
+            inp.checked = true;
+            document.getElementById('nextBtn').disabled = false;
+            if (n === total - 1) document.getElementById('submitBtn').disabled = false;
+        }
+        opt.onclick = function() {
+            document.querySelectorAll('.comic-option').forEach(o => o.classList.remove('selected'));
+            this.classList.add('selected');
+            const inp = this.querySelector('input');
+            inp.checked = true;
+            const question = r.text + (r.scene ? ' ' + r.scene : '') + ' Что произошло дальше?';
+            choices['round_' + (n+1)] = { question: question, selected: inp.dataset.text || this.querySelector('span').textContent, value: inp.value };
+            document.getElementById('nextBtn').disabled = false;
+            if (n === total - 1) document.getElementById('submitBtn').disabled = false;
+        };
+    });
+
+    document.querySelectorAll('.progress-dot').forEach((d, i) => {
+        d.classList.remove('done', 'current');
+        if (i < n) d.classList.add('done');
+        if (i === n) d.classList.add('current');
+    });
+    document.getElementById('prevBtn').style.display = n > 0 ? 'block' : 'none';
+    document.getElementById('nextBtn').style.display = n < total - 1 ? 'block' : 'none';
+    document.getElementById('submitBtn').style.display = n === total - 1 ? 'block' : 'none';
+    document.getElementById('submitBtn').disabled = true;
+    if (n === total - 1 && choices['round_5']) document.getElementById('submitBtn').disabled = false;
+}
+
+document.getElementById('nextBtn').onclick = () => {
+    current++;
+    showRound(current);
+};
+document.getElementById('prevBtn').onclick = () => { current--; showRound(current); };
+
+function prepareChoiceForm() {
+    let choicesInp = document.querySelector('input[name="choices_json"]');
+    if (!choicesInp) {
+        choicesInp = document.createElement('input');
+        choicesInp.type = 'hidden';
+        choicesInp.name = 'choices_json';
+        document.getElementById('choiceForm').appendChild(choicesInp);
+    }
+    choicesInp.value = JSON.stringify(choices);
+    let rt = document.querySelector('input[name="reaction_times"]');
+    if (!rt) {
+        rt = document.createElement('input');
+        rt.type = 'hidden';
+        rt.name = 'reaction_times';
+        document.getElementById('choiceForm').appendChild(rt);
+    }
+    rt.value = JSON.stringify(reactionTimes);
+}
+
+document.getElementById('choiceForm').onsubmit = () => { prepareChoiceForm(); };
+
+document.getElementById('backToDashboard').addEventListener('click', function(e) {
+    e.preventDefault();
+    prepareChoiceForm();
+    document.getElementById('choiceForm').submit();
+});
+
+showRound(0);
+</script>
 {% endblock %}

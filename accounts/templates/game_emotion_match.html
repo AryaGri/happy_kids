@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% block title %}Выбери картинку — {{ child.name }}{% endblock %}
+{% block content %}
+<div class="container" style="max-width:560px;">
+    <h4 class="text-center mb-3">🖼️ Выбери картинку</h4>
+    <p class="text-center text-muted mb-4">Какая тебе больше нравится?</p>
+    <form method="post" id="gameForm">
+        {% csrf_token %}
+        <input type="hidden" name="session_id" value="{{ session.id }}">
+        <input type="hidden" name="data" id="dataInput">
+        <div class="card p-4 mb-3">
+            <p class="text-center mb-3" id="promptText"></p>
+            <div class="d-flex flex-wrap gap-3 justify-content-center" id="options"></div>
+        </div>
+        <div class="d-flex gap-2 justify-content-between">
+            <button type="button" class="btn btn-outline-secondary" id="backBtn" style="display:none;">← Назад</button>
+            <button type="button" class="btn btn-primary" id="nextBtn" style="display:none;">Дальше →</button>
+        </div>
+        <button type="submit" class="btn btn-success w-100 mt-3" id="submitBtn" style="display:none;" disabled>Готово!</button>
+    </form>
+    <a href="{% url 'game_dashboard' child.id %}" id="backToDashboard" class="d-block text-center mt-2">← Назад</a>
+</div>
+<script>
+const ROUNDS = [
+    { text: "Какая погода тебе нравится?", opts: [
+        { e: "☀️", t: "Солнечно", v: "joy" },
+        { e: "⛅", t: "Облачно", v: "boredom" },
+        { e: "🌧️", t: "Дождь", v: "sorrow" },
+        { e: "🌈", t: "Радуга", v: "happiness" }
+    ]},
+    { text: "Чем бы ты хотел заняться?", opts: [
+        { e: "⚽", t: "Поиграть", v: "joy" },
+        { e: "📖", t: "Почитать", v: "love" },
+        { e: "🎨", t: "Порисовать", v: "happiness" },
+        { e: "🛋️", t: "Отдохнуть", v: "boredom" }
+    ]},
+    { text: "Какое место тебе нравится?", opts: [
+        { e: "🏠", t: "Дома", v: "love" },
+        { e: "🏞️", t: "В парке", v: "joy" },
+        { e: "🌊", t: "У воды", v: "sorrow" },
+        { e: "🎪", t: "На празднике", v: "happiness" }
+    ]},
+    { text: "Какой персонаж тебе симпатичен?", opts: [
+        { e: "🐱", t: "Котик", v: "love" },
+        { e: "🐶", t: "Собачка", v: "joy" },
+        { e: "🐰", t: "Зайчик", v: "happiness" },
+        { e: "🦊", t: "Лисичка", v: "boredom" }
+    ]},
+    { text: "Что бы ты выбрал на ужин?", opts: [
+        { e: "🍕", t: "Пиццу", v: "joy" },
+        { e: "🍲", t: "Суп", v: "love" },
+        { e: "🍰", t: "Торт", v: "happiness" },
+        { e: "🥗", t: "Салат", v: "boredom" }
+    ]},
+    { text: "Какая картинка тебе нравится больше всего?", opts: [
+        { e: "😊", t: "Улыбка", v: "joy" },
+        { e: "🤗", t: "Объятие", v: "love" },
+        { e: "🌙", t: "Луна", v: "sorrow" },
+        { e: "⭐", t: "Звезда", v: "happiness" }
+    ]},
+];
+let idx = 0, reactionTimes = [], choices = {};
+
+function shuffle(arr) { for (let i=arr.length-1; i>0; i--) { const j=Math.floor(Math.random()*(i+1)); [arr[i],arr[j]]=[arr[j],arr[i]]; } return arr; }
+
+function show() {
+    const r = ROUNDS[idx];
+    const order = shuffle([0,1,2,3]);
+    const prevChoice = choices['round_' + (idx+1)];
+    const selectedVal = typeof prevChoice === 'object' ? prevChoice?.value : prevChoice;
+    const optsHtml = order.map(i => {
+        const o = r.opts[i];
+        const active = selectedVal === o.v ? ' btn-primary' : ' btn-outline-primary';
+        return `<button type="button" class="btn btn-lg p-3${active}" data-val="${o.v}" data-text="${(o.t||'').replace(/"/g,'&quot;')}" style="min-width:100px;font-size:2rem">${o.e}<br><small class="d-block mt-1">${o.t}</small></button>`;
+    }).join('');
+    document.getElementById('promptText').textContent = r.text;
+    document.getElementById('options').innerHTML = optsHtml;
+    document.getElementById('backBtn').style.display = idx > 0 ? 'inline-block' : 'none';
+    document.getElementById('nextBtn').style.display = idx < ROUNDS.length - 1 ? 'inline-block' : 'none';
+    document.getElementById('submitBtn').style.display = idx === ROUNDS.length - 1 ? 'block' : 'none';
+    document.getElementById('nextBtn').disabled = !choices['round_' + (idx+1)];
+
+    const start = Date.now();
+    document.getElementById('options').querySelectorAll('button').forEach(btn => {
+        btn.onclick = () => {
+            reactionTimes[idx] = Date.now() - start;
+            choices['round_' + (idx+1)] = { question: r.text, selected: btn.dataset.text || btn.querySelector('small')?.textContent || '', value: btn.dataset.val };
+            document.querySelectorAll('#options button').forEach(b => { b.classList.remove('btn-primary'); b.classList.add('btn-outline-primary'); });
+            btn.classList.remove('btn-outline-primary');
+            btn.classList.add('btn-primary');
+            document.getElementById('nextBtn').disabled = false;
+            if (idx === ROUNDS.length - 1) document.getElementById('submitBtn').disabled = false;
+        };
+    });
+    if (idx === ROUNDS.length - 1 && choices['round_' + (idx+1)]) {
+        document.getElementById('submitBtn').disabled = false;
+    }
+}
+
+document.getElementById('nextBtn').onclick = () => {
+    idx++;
+    show();
+};
+
+document.getElementById('backBtn').onclick = () => {
+    idx--;
+    show();
+};
+
+function prepareEmotionMatchForm() {
+    document.getElementById('dataInput').value = JSON.stringify({
+        correct: Object.keys(choices).length,
+        total: ROUNDS.length,
+        choices: choices,
+        reaction_times: reactionTimes
+    });
+}
+
+document.getElementById('gameForm').onsubmit = () => { prepareEmotionMatchForm(); };
+
+document.getElementById('backToDashboard').addEventListener('click', function(e) {
+    e.preventDefault();
+    prepareEmotionMatchForm();
+    document.getElementById('gameForm').submit();
+});
+
+show();
+</script>
+{% endblock %}

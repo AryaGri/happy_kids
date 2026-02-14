@@ -55,18 +55,32 @@
 
             {% if user.role == 'doctor' and license %}
             <div class="card shadow-sm mt-4">
-                <div class="card-header bg-light">
+                <div class="card-header bg-light d-flex justify-content-between align-items-center">
                     <h5 class="mb-0"><i class="fas fa-id-card me-2"></i>Лицензия</h5>
+                    <a href="{% url 'doctor_license_edit' %}" class="btn btn-outline-primary btn-sm">Редактировать</a>
                 </div>
                 <div class="card-body">
                     <p><strong>Номер:</strong> {{ license.license_number }}</p>
                     <p><strong>Статус:</strong>
                         {% if license.is_verified %}
                         <span class="badge bg-success">Проверена</span>
+                        {% elif license.rejection_reason %}
+                        <span class="badge bg-danger">Отклонена</span>
+                        <p class="text-danger small mt-1 mb-0">Причина: {{ license.rejection_reason }}</p>
                         {% else %}
                         <span class="badge bg-warning text-dark">Ожидает проверки</span>
                         {% endif %}
                     </p>
+                </div>
+            </div>
+            {% elif user.role == 'doctor' %}
+            <div class="card shadow-sm mt-4">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="fas fa-id-card me-2"></i>Лицензия</h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted mb-2">Лицензия не добавлена.</p>
+                    <a href="{% url 'doctor_license_edit' %}" class="btn btn-primary">Добавить лицензию</a>
                 </div>
             </div>
             {% endif %}

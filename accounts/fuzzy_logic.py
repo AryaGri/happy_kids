@@ -10,7 +10,7 @@ import json
 from collections import Counter
 
 from .models import (
-    CUsers, GameResult, GameSession, DiagnosticProfile,
+    CUsers, GameResult, GameSession, DiagnosticProfile, DiagnosticDiagnosis,
     FuzzyLinguisticVariable, FuzzyMembershipFunction, BehaviorPattern, FuzzyInferenceRule,
     EMOTIONS
 )
@@ -272,15 +272,37 @@ class FuzzyAnalyzer:
             if result.strategy_type:
                 strategies.append(result.strategy_type)
             
-            # Анализ паттерна ошибок
             if hasattr(result, 'mistake_types') and result.mistake_types:
-                mistake_types = result.mistake_types
-                
-                # Определяем стратегию по типу ошибок
-                if mistake_types.get('inhibition', 0) > mistake_types.get('attention', 0):
+                mt = result.mistake_types
+                if mt.get('inhibition', 0) > mt.get('attention', 0):
                     strategies.append('impulsive')
-                elif mistake_types.get('attention', 0) > mistake_types.get('inhibition', 0):
+                elif mt.get('attention', 0) > mt.get('inhibition', 0):
                     strategies.append('systematic')
+            
+            # Sequence: много ошибок = импульсивность
+            if result.game_type == 'Sequence' and result.mistakes > 3:
+                strategies.append('impulsive')
+            elif result.game_type == 'Sequence' and result.mistakes <= 1:
+                strategies.append('systematic')
+            
+            # Puzzle: много ходов = систематичность, мало = импульсивность
+            pm = getattr(result, 'performance_metrics', None) or {}
+            if result.game_type == 'Puzzle':
+                moves = pm.get('moves', 0)
+                if moves > 50 and pm.get('completed'):
+                    strategies.append('systematic')
+                elif moves < 20 and not pm.get('completed'):
+                    strategies.append('impulsive')
+            
+            # Memory: много попыток = импульсивность
+            if result.game_type == 'Memory':
+                attempts = pm.get('attempts', 0)
+                pairs = pm.get('pairs_found', 0)
+                if attempts > 0 and pairs > 0 and attempts / max(pairs, 1) > 2:
+                    strategies.append('impulsive')
+            # GoNoGo: commission_errors = импульсивность
+            if result.game_type == 'GoNoGo' and pm.get('commission_errors', 0) > 2:
+                strategies.append('impulsive')
         
         if not strategies:
             return 'unknown'
@@ -298,6 +320,23 @@ class FuzzyAnalyzer:
         """
         total_mistakes = sum(r.mistakes for r in game_results)
         total_actions = sum(len(r.reaction_times) for r in game_results if r.reaction_times)
+        
+        # Добавляем действия из performance_metrics
+        for r in game_results:
+            pm = getattr(r, 'performance_metrics', None) or {}
+            if r.game_type == 'Memory':
+                total_actions += pm.get('attempts', 0) * 2
+                total_mistakes += max(0, pm.get('attempts', 0) - pm.get('pairs_found', 0))
+            elif r.game_type == 'Puzzle':
+                total_actions += pm.get('moves', 0)
+            elif r.game_type == 'Sequence':
+                total_actions += pm.get('level_reached', 1) * 4
+            elif r.game_type in ('EmotionFace', 'Sort', 'Pattern', 'EmotionMatch'):
+                total_actions += pm.get('total', 8)
+            elif r.game_type == 'Attention':
+                total_actions += pm.get('hits', 0) + pm.get('misses', 0) + pm.get('false_alarms', 0)
+            elif r.game_type == 'GoNoGo':
+                total_actions += pm.get('correct_go', 0) + pm.get('commission_errors', 0) + pm.get('omission_errors', 0)
         
         if total_actions == 0:
             return {
@@ -351,180 +390,187 @@ class FuzzyAnalyzer:
     
     # ==================== МЕТОДЫ ДЛЯ РАСЧЁТА ЛИНГВИСТИЧЕСКИХ ПЕРЕМЕННЫХ ====================
     
+    def _game_data_score(self, r: GameResult) -> float:
+        """Оценка полноты данных по типу игры (0-1). Чёткая логика для каждого типа."""
+        if r.game_type == 'Painting':
+            return 1.0 if (r.drawing_data and r.drawing_data.get('image_base64')) else 0.3
+        if r.game_type == 'Dialog':
+            return min(len(r.dialog_answers or {}) / 5, 1)
+        if r.game_type == 'Choice':
+            return min(len(r.choices or {}) / 5, 1)
+        if r.game_type == 'Memory':
+            pm = r.performance_metrics or {}
+            return min((pm.get('pairs_found', 0) + pm.get('levels_completed', 0) * 2) / 10, 1)
+        if r.game_type == 'Puzzle':
+            pm = r.performance_metrics or {}
+            return 0.5 if pm.get('moves', 0) > 0 else 0.2
+        if r.game_type == 'Sequence':
+            pm = r.performance_metrics or {}
+            return 0.5 if pm.get('level_reached', 0) > 0 else 0.2
+        if r.game_type in ('EmotionFace', 'Attention', 'GoNoGo', 'Sort', 'Pattern', 'EmotionMatch'):
+            pm = r.performance_metrics or {}
+            return 0.7 if pm else 0.3
+        return 0.3
+    
     def calculate_diagnostic_depth(self, game_results: List[GameResult]) -> Dict[str, float]:
         """
         Расчёт диагностической глубины (лингвистическая переменная А из НИР)
-        
-        Args:
-            game_results: результаты игр ребёнка
-            
-        Returns:
-            принадлежность к термам 'низкая', 'средняя', 'высокая'
+        Для каждого типа: Painting, Dialog, Choice, Memory, Puzzle, Sequence — своя логика.
         """
         if not game_results:
             return {'низкая': 0.5, 'средняя': 0.5, 'высокая': 0}
         
-        # Факторы, влияющие на диагностическую глубину:
-        # 1. Разнообразие игр
         game_types = set(r.game_type for r in game_results)
-        diversity = len(game_types) / 3  # максимум 3 типа игр
+        diversity = min(len(game_types) / 12, 1)  # 12 типов игр
         
-        # 2. Наличие поведенческих траекторий
-        has_trajectories = any(r.behavior_trajectory for r in game_results)
+        # Интегральная оценка полноты данных по каждой игре
+        data_scores = [self._game_data_score(r) for r in game_results]
+        has_detailed = sum(data_scores) / len(data_scores) if data_scores else 0
         
-        # 3. Детализация результатов (наличие дополнительных метрик)
-        has_detailed = any(
-            r.reaction_times or r.mistake_types or r.performance_metrics
-            for r in game_results
-        )
+        sessions_score = min(len(game_results) / 8, 1)
         
-        # 4. Количество сессий
-        sessions_count = min(len(game_results) / 5, 1)  # нормализуем до 1
-        
-        # Интегральный показатель (0-1)
         depth_score = (
-            diversity * 0.3 +
-            (1 if has_trajectories else 0) * 0.3 +
-            (1 if has_detailed else 0) * 0.25 +
-            sessions_count * 0.15
+            diversity * 0.35 +
+            has_detailed * 0.4 +
+            sessions_score * 0.25
         )
         
-        # Фаззификация
         var = FuzzyVariable('diagnostic_depth', self.LINGUISTIC_VARIABLES['diagnostic_depth']['terms'])
         return var.fuzzify(depth_score)
     
     def calculate_motivation(self, game_results: List[GameResult]) -> Dict[str, float]:
         """
         Расчёт мотивационного потенциала (лингвистическая переменная В из НИР)
-        
-        Args:
-            game_results: результаты игр ребёнка
-            
-        Returns:
-            принадлежность к термам 'низкий', 'умеренный', 'высокий'
+        Memory: levels_completed, pairs_found; Puzzle: completed; Sequence: level_reached, mistakes.
+        Painting/Dialog/Choice: joy+happiness.
         """
         if not game_results:
             return {'низкий': 0.5, 'умеренный': 0.5, 'высокий': 0}
         
-        # Индикаторы мотивации:
-        # 1. Завершённые сессии
-        completed_sessions = sum(1 for r in game_results if r.session and r.session.completed)
-        completion_rate = completed_sessions / len(game_results) if game_results else 0
+        completion_rate = sum(1 for r in game_results if r.session and r.session.completed) / len(game_results)
         
-        # 2. Время, проведённое в игре
-        total_time = 0
-        for r in game_results:
-            if r.session and r.session.end_time and r.session.start_time:
-                session_time = (r.session.end_time - r.session.start_time).total_seconds()
-                total_time += session_time
+        # Memory: levels_completed (0–4), pairs_found
+        memory_results = [r for r in game_results if r.game_type == 'Memory']
+        memory_score = 0
+        for r in memory_results:
+            pm = r.performance_metrics or {}
+            lvl = pm.get('levels_completed', 0) / 4
+            pairs = min(pm.get('pairs_found', 0) / 20, 1)
+            memory_score += lvl * 0.6 + pairs * 0.4
+        memory_score = min(memory_score / max(len(memory_results), 1), 1)
         
-        avg_time = total_time / len(game_results) if game_results else 0
-        time_score = min(avg_time / 300, 1)  # 5 минут = максимум
+        # Puzzle: completed
+        puzzle_results = [r for r in game_results if r.game_type == 'Puzzle']
+        puzzle_score = sum(1 for r in puzzle_results if (r.performance_metrics or {}).get('completed')) / max(len(puzzle_results), 1)
         
-        # 3. Использование дополнительных функций (подсказки - не всегда плохо)
-        hint_usage = sum(r.hints_used for r in game_results) / len(game_results) if game_results else 0
-        # Нормализованный показатель (умеренное использование = хорошо)
-        hint_score = 1 - abs(hint_usage - 2) / 5 if hint_usage else 0.5
+        # Sequence: level_reached (1–5), mistakes
+        seq_results = [r for r in game_results if r.game_type == 'Sequence']
+        seq_score = 0
+        for r in seq_results:
+            pm = r.performance_metrics or {}
+            lvl = pm.get('level_reached', 1) / 5
+            seq_score += lvl * max(0, 1 - r.mistakes * 0.1)
+        seq_score = min(seq_score / max(len(seq_results), 1), 1)
         
-        # 4. Прогресс в играх (улучшение результатов)
-        if len(game_results) >= 2:
-            first_joy = game_results[0].joy if hasattr(game_results[0], 'joy') else 0
-            last_joy = game_results[-1].joy if hasattr(game_results[-1], 'joy') else 0
-            progress = min((last_joy - first_joy) / 10 + 0.5, 1) if last_joy > first_joy else 0.3
-        else:
-            progress = 0.5
+        emotion_sum = sum(r.joy + r.happiness for r in game_results)
+        emotion_score = min(emotion_sum / (len(game_results) * 10), 1)
         
-        # Интегральный показатель
         motivation_score = (
-            completion_rate * 0.3 +
-            time_score * 0.3 +
-            max(0, hint_score) * 0.2 +
-            progress * 0.2
+            completion_rate * 0.2 +
+            memory_score * 0.25 +
+            puzzle_score * 0.2 +
+            seq_score * 0.2 +
+            emotion_score * 0.15
         )
         
-        # Фаззификация
         var = FuzzyVariable('motivational_potential', self.LINGUISTIC_VARIABLES['motivational_potential']['terms'])
         return var.fuzzify(motivation_score)
     
     def calculate_objectivity(self, game_results: List[GameResult]) -> Dict[str, float]:
         """
-        Расчёт объективности и стандартизации (лингвистическая переменная С из НИР)
-        Для цифровых методов всегда высокая, но учитываем качество данных
+        Расчёт объективности (лингвистическая переменная С из НИР)
+        Memory, Puzzle, Sequence — объективные метрики; Painting, Dialog, Choice — субъективные.
         """
         if not game_results:
             return {'низкая': 0.1, 'средняя': 0.3, 'высокая': 0.6}
         
-        # Для цифровых игр объективность высокая по умолчанию
-        base_score = 0.8
+        # Объективные игры: Memory, Puzzle, Sequence, EmotionFace, Attention, GoNoGo, Sort, Pattern, EmotionMatch
+        obj_types = ('Memory', 'Puzzle', 'Sequence', 'EmotionFace', 'Attention', 'GoNoGo', 'Sort', 'Pattern', 'EmotionMatch')
+        obj_count = sum(1 for r in game_results if r.game_type in obj_types)
+        obj_ratio = obj_count / len(game_results)
         
-        # Но может снижаться при проблемах с данными
-        data_quality = 1.0
+        # Субъективные: Painting, Dialog, Choice — дополняют картину
+        subj_count = sum(1 for r in game_results if r.game_type in ('Painting', 'Dialog', 'Choice'))
         
-        # Проверяем наличие объективных метрик
-        has_reaction_times = any(r.reaction_times for r in game_results)
-        has_accuracy = any(r.accuracy > 0 for r in game_results)
+        # Базовая объективность: чем больше объективных игр, тем выше
+        base_score = 0.6 + obj_ratio * 0.3
+        if subj_count > 0:
+            base_score += 0.1  # Субъективные дают контекст
+        base_score = min(base_score, 1.0)
         
-        if not has_reaction_times:
-            data_quality -= 0.1
-        if not has_accuracy:
-            data_quality -= 0.1
-        
-        objectivity_score = base_score * data_quality
-        
-        # Фаззификация
         var = FuzzyVariable('objectivity', self.LINGUISTIC_VARIABLES['objectivity']['terms'])
-        return var.fuzzify(objectivity_score)
+        return var.fuzzify(base_score)
     
     def calculate_ecological_validity(self, game_results: List[GameResult]) -> Dict[str, float]:
         """
         Расчёт экологической валидности (лингвистическая переменная D из НИР)
+        Choice — свобода выбора; Painting — творчество; Dialog — естественный диалог.
+        Memory, Puzzle, Sequence — структурированные, но игровые.
         """
         if not game_results:
             return {'низкая': 0.2, 'средняя': 0.5, 'высокая': 0.3}
         
-        # Факторы экологической валидности:
-        # 1. Естественность игрового контекста
-        context_score = 0.8  # игры по умолчанию экологичны
+        # Choice — высокая экологичность (свобода выбора эмоций)
+        choice_count = sum(1 for r in game_results if r.game_type == 'Choice' and r.choices)
+        # Painting — творческая свобода
+        paint_count = sum(1 for r in game_results if r.game_type == 'Painting' and r.drawing_data)
+        # Dialog — естественный разговор
+        dialog_count = sum(1 for r in game_results if r.game_type == 'Dialog' and r.dialog_answers)
         
-        # 2. Отсутствие вмешательства взрослых
-        has_sessions = any(r.session for r in game_results)
+        eco_score = 0.6
+        eco_score += choice_count * 0.1
+        eco_score += paint_count * 0.1
+        eco_score += dialog_count * 0.1
+        eco_score = min(eco_score, 1.0)
         
-        # 3. Свобода действий в игре
-        has_choices = any(r.choices for r in game_results)
-        
-        if has_choices:
-            context_score += 0.1
-        
-        ecological_score = min(context_score, 1.0)
-        
-        # Фаззификация
         var = FuzzyVariable('ecological_validity', self.LINGUISTIC_VARIABLES['ecological_validity']['terms'])
-        return var.fuzzify(ecological_score)
+        return var.fuzzify(eco_score)
     
     def calculate_dynamic_assessment(self, game_results: List[GameResult]) -> Dict[str, float]:
         """
         Расчёт потенциала для динамической оценки (лингвистическая переменная Е из НИР)
+        Memory: levels_completed; Sequence: level_reached; Puzzle: completed.
+        Множество игр и прогресс по уровням = широкий потенциал.
         """
         if not game_results:
             return {'ограниченный': 0.3, 'умеренный': 0.5, 'широкий': 0.2}
         
-        # Факторы динамической оценки:
-        # 1. Наличие временных рядов
-        has_trajectories = any(r.behavior_trajectory for r in game_results)
-        
-        # 2. Множество точек измерения
         multiple_points = len(game_results) >= 3
-        
-        # 3. Вариативность заданий
         game_types = len(set(r.game_type for r in game_results))
         
-        dynamic_score = (
-            (1 if has_trajectories else 0) * 0.4 +
-            (1 if multiple_points else 0) * 0.3 +
-            (game_types / 3) * 0.3
+        # Memory: levels_completed (0–4)
+        mem_progress = sum(
+            (r.performance_metrics or {}).get('levels_completed', 0) / 4
+            for r in game_results if r.game_type == 'Memory'
+        )
+        # Sequence: level_reached (1–5)
+        seq_progress = sum(
+            (r.performance_metrics or {}).get('level_reached', 1) / 5
+            for r in game_results if r.game_type == 'Sequence'
+        )
+        # Puzzle: completed
+        puz_progress = sum(
+            1 for r in game_results if r.game_type == 'Puzzle' and (r.performance_metrics or {}).get('completed')
         )
         
-        # Фаззификация
+        progress_score = min((mem_progress + seq_progress + puz_progress) / max(len(game_results), 1), 1)
+        
+        dynamic_score = (
+            (1 if multiple_points else 0) * 0.35 +
+            min(game_types / 12, 1) * 0.4 +
+            progress_score * 0.25
+        )
+        
         var = FuzzyVariable('dynamic_assessment', self.LINGUISTIC_VARIABLES['dynamic_assessment']['terms'])
         return var.fuzzify(dynamic_score)
     
@@ -564,9 +610,11 @@ class FuzzyAnalyzer:
         # Сортируем по дате
         sorted_results = sorted(game_results, key=lambda x: x.date)
         
+        EMOTION_FIELD = {'гнев': 'anger', 'скука': 'boredom', 'радость': 'joy', 'счастье': 'happiness', 'грусть': 'sorrow', 'любовь': 'love'}
         trends = {}
         for emotion in EMOTIONS:
-            values = [getattr(r, emotion, 0) for r in sorted_results]
+            field = EMOTION_FIELD.get(emotion, emotion)
+            values = [getattr(r, field, 0) for r in sorted_results]
             if len(values) >= 2:
                 # Простой линейный тренд
                 first_half = sum(values[:len(values)//2]) / (len(values)//2)
@@ -606,7 +654,8 @@ class FuzzyAnalyzer:
                 ecological_validity={'низкая': 0.2, 'средняя': 0.4, 'высокая': 0.4},
                 dynamic_assessment={'ограниченный': 0.2, 'умеренный': 0.4, 'широкий': 0.4},
                 emotional_profile=self.analyze_emotions([]),
-                recommendations="Недостаточно данных для анализа. Проведите больше игровых сессий."
+                recommendations="Недостаточно данных для анализа. Проведите больше игровых сессий.",
+                detected_diagnoses=[]
             )
         
         # Расчёт лингвистических переменных
@@ -624,33 +673,258 @@ class FuzzyAnalyzer:
         emotional_trends = self.detect_emotional_trends(game_results)
         emotional_profile['trends'] = emotional_trends
         
-        # Генерация рекомендаций
-        recommendations = self.generate_recommendations(
-            diagnostic_depth, motivational_potential,
-            objectivity, ecological_validity, dynamic_assessment,
-            emotional_profile, cognitive_style
-        )
+        # Определение диагнозов и генерация рекомендаций
+        profile_data = {
+            'diagnostic_depth': diagnostic_depth,
+            'motivational_potential': motivational_potential,
+            'objectivity': objectivity,
+            'ecological_validity': ecological_validity,
+            'dynamic_assessment': dynamic_assessment,
+            'emotional_profile': emotional_profile,
+            'cognitive_style': cognitive_style,
+        }
+        detected_diagnoses, recommendations = self.generate_recommendations_with_diagnoses(**profile_data)
         
-        # Создание профиля
-        profile = DiagnosticProfile.objects.create(
-            child=child,
-            diagnostic_depth=diagnostic_depth,
-            motivational_potential=motivational_potential,
-            objectivity=objectivity,
-            ecological_validity=ecological_validity,
-            dynamic_assessment=dynamic_assessment,
-            cognitive_style=cognitive_style,
-            emotional_profile=emotional_profile,
-            recommendations=recommendations
-        )
+        # Обновляем последний профиль или создаём новый (чтобы не плодить записи)
+        latest = DiagnosticProfile.objects.filter(child=child).first()
+        if latest:
+            latest.diagnostic_depth = diagnostic_depth
+            latest.motivational_potential = motivational_potential
+            latest.objectivity = objectivity
+            latest.ecological_validity = ecological_validity
+            latest.dynamic_assessment = dynamic_assessment
+            latest.cognitive_style = cognitive_style
+            latest.emotional_profile = emotional_profile
+            latest.recommendations = recommendations
+            latest.detected_diagnoses = detected_diagnoses
+            latest.save()
+            profile = latest
+        else:
+            profile = DiagnosticProfile.objects.create(
+                child=child,
+                diagnostic_depth=diagnostic_depth,
+                motivational_potential=motivational_potential,
+                objectivity=objectivity,
+                ecological_validity=ecological_validity,
+                dynamic_assessment=dynamic_assessment,
+                cognitive_style=cognitive_style,
+                emotional_profile=emotional_profile,
+                recommendations=recommendations,
+                detected_diagnoses=detected_diagnoses
+            )
         
-        # Привязываем сессии
         sessions = GameSession.objects.filter(user=child)
         profile.based_on_sessions.set(sessions)
-        
         return profile
     
     # ==================== ГЕНЕРАЦИЯ РЕКОМЕНДАЦИЙ ====================
+    
+    def _match_diagnoses(self, profile_data: Dict) -> List[Tuple[DiagnosticDiagnosis, float]]:
+        """Сопоставление профиля с диагнозами из БД. Возвращает список (диагноз, степень соответствия)."""
+        matched = []
+        for diag in DiagnosticDiagnosis.objects.all():
+            conditions = diag.fuzzy_conditions or {}
+            if not conditions:
+                continue
+            min_match = 1.0
+            for key, threshold in conditions.items():
+                parts = key.split('.')
+                if len(parts) != 2:
+                    continue
+                var_name, term = parts
+                data = profile_data.get(var_name, {})
+                if isinstance(data, dict):
+                    val = data.get(term, 0)
+                else:
+                    val = 1.0 if data == term else 0.0
+                if val >= threshold:
+                    min_match = min(min_match, val)
+                else:
+                    min_match = 0
+                    break
+            if min_match > 0:
+                matched.append((diag, min_match))
+        return sorted(matched, key=lambda x: (-x[1], x[0].priority))
+    
+    def generate_recommendations_with_diagnoses(self, **kwargs) -> Tuple[List[str], str]:
+        """Генерация рекомендаций с учётом диагнозов из БД. Возвращает (коды диагнозов, текст рекомендаций)."""
+        detected_codes = []
+        sections = []
+        diagnostic_depth = kwargs.get('diagnostic_depth', {})
+        motivational = kwargs.get('motivational_potential', {})
+        emotional = kwargs.get('emotional_profile', {})
+        cognitive_style = kwargs.get('cognitive_style', 'unknown')
+        
+        # Сопоставление с диагнозами из БД
+        matched = self._match_diagnoses(kwargs)
+        for diag, score in matched:
+            detected_codes.append(diag.code)
+            block = f"▸ {diag.name}\n{diag.default_recommendations}"
+            if diag.default_prescription_text:
+                block += f"\n• Возможное назначение: {diag.default_prescription_text}"
+            if diag.default_prescription_type == 'medication':
+                block += " (только по назначению врача)"
+            sections.append(block)
+        
+        # Граничные значения с заголовками и рекомендациями
+        boundary_sections = self._generate_boundary_analysis(
+            diagnostic_depth=diagnostic_depth,
+            motivational=motivational,
+            emotional=emotional,
+            cognitive_style=cognitive_style
+        )
+        sections.extend(boundary_sections)
+        
+        # Дополнительные рекомендации
+        extra = self._generate_extra_recommendations(**kwargs)
+        sections.extend(extra)
+        
+        if not sections:
+            return detected_codes, (
+                "✅ Диагноз не выявлен. Всё хорошо.\n\n"
+                "Эмоциональный и когнитивный профиль в пределах нормы. "
+                "Продолжайте регулярные игровые сессии для мониторинга динамики развития."
+            )
+        
+        return detected_codes, "\n\n".join(sections)
+    
+    def _generate_boundary_analysis(self, **kwargs) -> List[str]:
+        """Подробный анализ по граничным значениям с заголовками, рекомендациями и назначениями."""
+        sections = []
+        emotional = kwargs.get('emotional_profile', {})
+        motivational = kwargs.get('motivational_potential', {})
+        diagnostic_depth = kwargs.get('diagnostic_depth', {})
+        cognitive_style = kwargs.get('cognitive_style', 'unknown')
+        
+        # Грусть: граничные значения
+        sorrow = emotional.get('грусть', 0)
+        if sorrow >= 0.5:
+            sections.append(
+                "▸ Выраженная грусть (≥50%) — возможная депрессия\n"
+                "Рекомендации: Срочная консультация детского психиатра или психолога. "
+                "Создание поддерживающей среды, арт-терапия, игры на позитивные эмоции. "
+                "Исключить буллинг и стрессовые факторы.\n"
+                "• Возможные назначения: Консультация психиатра; при подтверждённой депрессии — "
+                "психотерапия (КПТ), в тяжёлых случаях — антидепрессанты по назначению врача (флуоксетин и др.)."
+            )
+        elif sorrow >= 0.35:
+            sections.append(
+                "▸ Повышенная грусть (35–50%)\n"
+                "Рекомендации: Консультация детского психолога для выяснения причин. "
+                "Поддерживающая среда, игры на позитивные эмоции, арт-терапия.\n"
+                "• Возможные назначения: Игровая терапия, наблюдение психолога."
+            )
+        
+        # Гнев/стресс
+        anger = emotional.get('гнев', 0)
+        if anger >= 0.5:
+            sections.append(
+                "▸ Выраженный гнев/стресс (≥50%)\n"
+                "Рекомендации: Оценка уровня стресса и тревоги. Техники релаксации, "
+                "дыхательные упражнения. Арт-терапия для выражения эмоций. Исключить травмирующие факторы.\n"
+                "• Возможные назначения: Игровая терапия, релаксационные техники; "
+                "при выраженной тревоге — консультация психиатра (анксиолитики только по назначению)."
+            )
+        elif anger >= 0.3:
+            sections.append(
+                "▸ Повышенный гнев (30–50%)\n"
+                "Рекомендации: Элементы релаксации, упражнения на выражение эмоций. "
+                "Арт-терапия, песочная терапия, техники управления гневом.\n"
+                "• Возможные назначения: Арт-терапия 2–3 раза в неделю."
+            )
+        
+        # Скука/апатия
+        boredom = emotional.get('скука', 0)
+        if boredom >= 0.5:
+            sections.append(
+                "▸ Выраженная апатия/скука (≥50%)\n"
+                "Рекомендации: Исключить депрессию и ангедонию. Разнообразить задания, "
+                "подобрать игры по интересам. Проверить соответствие сложности возрасту.\n"
+                "• Возможные назначения: Консультация психолога; при сочетании с грустью — "
+                "оценка на депрессию."
+            )
+        elif boredom >= 0.35:
+            sections.append(
+                "▸ Повышенная скука (35–50%)\n"
+                "Рекомендации: Увеличить сложность или разнообразить игры. "
+                "Проверить соответствие заданий возрасту и возможностям ребёнка.\n"
+                "• Возможные назначения: Адаптация сложности игр."
+            )
+        
+        # Мотивация
+        low_mot = motivational.get('низкий', 0)
+        if low_mot >= 0.6:
+            sections.append(
+                "▸ Низкая мотивация (≥60%)\n"
+                "Рекомендации: Короткие сессии (10–15 мин) с элементами поощрения. "
+                "Постепенное увеличение сложности. Выбор игр по интересам ребёнка.\n"
+                "• Возможные назначения: Игровые сессии до 15 мин с перерывами, система поощрений."
+            )
+        
+        # Когнитивный стиль (дефицит внимания)
+        if cognitive_style == 'impulsive':
+            sections.append(
+                "▸ Импульсивность / возможный дефицит внимания\n"
+                "Рекомендации: Упражнения на произвольное внимание и самоконтроль. "
+                "Игры с последовательным выполнением инструкций, задания с отсроченным ответом.\n"
+                "• Возможные назначения: Упражнения на концентрацию 15–20 мин ежедневно; "
+                "при подтверждённом СДВГ — консультация невролога/психиатра (метилфенидат и др. только по назначению)."
+            )
+        
+        # Диагностическая глубина
+        if diagnostic_depth.get('высокая', 0) < 0.5:
+            sections.append(
+                "▸ Недостаточная диагностическая глубина\n"
+                "Рекомендации: Провести дополнительные игровые сессии. Разнообразить типы игр."
+            )
+        
+        return sections
+    
+    def _generate_extra_recommendations(self, **kwargs) -> List[str]:
+        """Дополнительные рекомендации на основе нечёткого анализа."""
+        recommendations = []
+        diagnostic_depth = kwargs.get('diagnostic_depth', {})
+        motivational = kwargs.get('motivational_potential', {})
+        emotional = kwargs.get('emotional_profile', {})
+        cognitive_style = kwargs.get('cognitive_style', 'unknown')
+        
+        if diagnostic_depth.get('высокая', 0) < 0.5:
+            recommendations.append(
+                "✅ Рекомендуется провести дополнительные игровые сессии для углублённой диагностики. "
+                "Разнообразьте типы игр для получения более полной картины."
+            )
+        if motivational.get('низкий', 0) > 0.6:
+            recommendations.append(
+                "⚠️ Наблюдается сниженная мотивация. "
+                "Используйте более короткие сессии и элементы поощрения."
+            )
+        elif motivational.get('высокий', 0) > 0.7:
+            recommendations.append(
+                "🌟 Высокая мотивация к игровой диагностике — благоприятные условия для достоверных результатов."
+            )
+        if cognitive_style == 'impulsive':
+            recommendations.append(
+                "🧠 Импульсивный стиль. Рекомендуются упражнения на самоконтроль и внимание."
+            )
+        elif cognitive_style == 'systematic':
+            recommendations.append(
+                "📊 Систематический подход. Поддерживайте задачи с возрастающей сложностью."
+            )
+        elif cognitive_style == 'adaptive':
+            recommendations.append(
+                "🎯 Адаптивный стиль. Рекомендуются задания на переключение между правилами."
+            )
+        if emotional:
+            for em, threshold in [('гнев', 0.3), ('грусть', 0.3), ('скука', 0.3)]:
+                if emotional.get(em, 0) > threshold:
+                    if em == 'гнев':
+                        recommendations.append("😠 Повышенный гнев — элементы релаксации и выражение эмоций.")
+                    elif em == 'грусть':
+                        recommendations.append("😔 Преобладание грусти — консультация психолога.")
+                    elif em == 'скука':
+                        recommendations.append("😐 Высокая скука — увеличить сложность или разнообразие игр.")
+        
+        return recommendations
     
     def generate_recommendations(self, *args, **kwargs) -> str:
         """

@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Паттерн — {{ child.name }}{% endblock %}
+{% block content %}
+<div class="container" style="max-width:500px;">
+    <h4 class="text-center mb-3">🔢 Паттерн</h4>
+    <p class="text-center text-muted">Продолжи последовательность</p>
+    <form method="post" id="gameForm">
+        {% csrf_token %}
+        <input type="hidden" name="session_id" value="{{ session.id }}">
+        <input type="hidden" name="data" id="dataInput">
+        <div class="card p-4 mb-3">
+            <div class="text-center mb-3" id="patternDisplay" style="font-size:1.8rem;"></div>
+            <div class="d-flex flex-wrap gap-2 justify-content-center" id="options"></div>
+        </div>
+        <button type="submit" class="btn btn-success w-100" id="submitBtn" style="display:none;">Готово!</button>
+    </form>
+    <a href="{% url 'game_dashboard' child.id %}" class="d-block text-center mt-2">← Назад</a>
+</div>
+<script>
+const PATTERNS = [
+    { seq: [1,2,3,4], opts: [5,6,7], correct: 0 },
+    { seq: [2,4,6,8], opts: [10,11,12], correct: 0 },
+    { seq: ['🔴','🔵','🔴','🔵'], opts: ['🔴','🔵','🟢'], correct: 0 },
+    { seq: ['▲','■','▲','■'], opts: ['▲','■','●'], correct: 0 },
+    { seq: [5,10,15,20], opts: [25,30,35], correct: 0 },
+    { seq: [3,6,9,12], opts: [15,18,21], correct: 0 },
+];
+let idx = 0, correct = 0, reactionTimes = [];
+function getNextVal(p) {
+    if (Array.isArray(p.seq) && typeof p.seq[0]==='number') {
+        return p.seq[p.seq.length-1] + (p.seq[1]-p.seq[0]);
+    }
+    if (p.seq[0] === p.seq[2]) return p.seq[0];
+    return p.seq[p.seq.length-1];
+}
+function show() {
+    const p = PATTERNS[idx];
+    const nextVal = getNextVal(p);
+    const opts = [...p.opts];
+    if (!opts.includes(nextVal)) opts[0] = nextVal;
+    const correctIdx = opts.indexOf(nextVal);
+    document.getElementById('patternDisplay').textContent = p.seq.join(' ... ') + ' → ?';
+    document.getElementById('options').innerHTML = opts.map((o, i) =>
+        `<button type="button" class="btn btn-outline-primary" data-i="${i}">${o}</button>`
+    ).join('');
+    const start = Date.now();
+    document.getElementById('options').querySelectorAll('button').forEach(btn => {
+        btn.onclick = () => {
+            reactionTimes.push(Date.now() - start);
+            const isCorrect = parseInt(btn.dataset.i) === correctIdx;
+            if (isCorrect) correct++;
+            idx++;
+            if (!isCorrect || idx >= PATTERNS.length) {
+                document.getElementById('submitBtn').style.display = 'block';
+                document.getElementById('options').innerHTML = isCorrect ? '<p class="text-success">Готово!</p>' : '<p class="text-muted">Игра окончена</p>';
+            } else show();
+        };
+    });
+}
+show();
+document.getElementById('gameForm').onsubmit = () => {
+    document.getElementById('dataInput').value = JSON.stringify({
+        correct, total: PATTERNS.length, reaction_times: reactionTimes
+    });
+};
+</script>
+{% endblock %}

@@ -1,6 +1,13 @@
 {% extends 'base.html' %}
-{% load static %} 
+{% load static %}
+
+{% block main_attr %}class="main-fullwidth"{% endblock %}
 
 {% block content %}
-    <img src="{% static "img/mainback.png" %}" class="full-width-image"/>
+<div class="hero-home">
+    <img src="{% static 'img/mainback.png' %}" class="full-width-image" alt="Добро пожаловать" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';"/>
+    <div class="hero-placeholder" style="display:none; width:100%; height:50vh; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); align-items:center; justify-content:center; color:white; font-size:2rem;">
+        Добро пожаловать
+    </div>
+</div>
 {% endblock %}

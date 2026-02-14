@@ -150,6 +150,12 @@ form {
     background-color: #f9f9f9;
 }
 
+/* Радарная диаграмма */
+.radar-chart-container {
+    min-height: 520px;
+    width: 100%;
+}
+
 /* Диаграммы */
 .chart-container {
     width: 100%;

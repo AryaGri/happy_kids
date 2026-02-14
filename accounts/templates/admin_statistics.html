@@ -1,0 +1,143 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Статистика системы{% endblock %}
+
+{% block content %}
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+    .stats-container { max-width: 1100px; margin: 0 auto; padding: 20px; }
+    .stats-container .container { height: auto !important; justify-content: flex-start !important; }
+    .stat-card { border-radius: 12px; }
+</style>
+
+<div class="stats-container">
+    <div class="mb-4">
+        <a href="{% url 'admin_dashboard' %}" class="text-decoration-none text-secondary mb-2 d-inline-block">
+            <i class="fas fa-arrow-left me-1"></i>Назад к панели
+        </a>
+        <h2 class="mb-1"><i class="fas fa-chart-bar me-2"></i>Статистика системы</h2>
+    </div>
+
+    <!-- Карточки со сводкой -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-3">
+            <div class="card stat-card border-primary">
+                <div class="card-body">
+                    <h6 class="text-muted">Всего игр</h6>
+                    <h3 class="mb-0">{{ total_games }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card stat-card border-info">
+                <div class="card-body">
+                    <h6 class="text-muted">Игровых сессий</h6>
+                    <h3 class="mb-0">{{ total_sessions }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card stat-card border-success">
+                <div class="card-body">
+                    <h6 class="text-muted">Активных врачей</h6>
+                    <h3 class="mb-0">{{ active_doctors }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card stat-card border-warning">
+                <div class="card-body">
+                    <h6 class="text-muted">Активных родителей</h6>
+                    <h3 class="mb-0">{{ active_parents }}</h3>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Статистика по типам игр -->
+    <div class="card mb-4">
+        <div class="card-header bg-light">
+            <h5 class="mb-0"><i class="fas fa-gamepad me-2"></i>Игры по типам</h5>
+        </div>
+        <div class="card-body">
+            {% if games_by_type %}
+            <div class="table-responsive">
+                <table class="table">
+                    <thead><tr><th>Тип игры</th><th>Количество</th></tr></thead>
+                    <tbody>
+                        {% for item in games_by_type %}
+                        <tr>
+                            <td>
+                                {% if item.game_type == 'Painting' %}🖌️ Раскраска
+                                {% elif item.game_type == 'Dialog' %}💬 Диалог
+                                {% elif item.game_type == 'Choice' %}🎯 Выбор
+                                {% else %}{{ item.game_type }}{% endif %}
+                            </td>
+                            <td>{{ item.count }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-muted mb-0">Пока нет данных об играх</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Эмоциональная статистика -->
+    <div class="card mb-4">
+        <div class="card-header bg-light">
+            <h5 class="mb-0"><i class="fas fa-smile me-2"></i>Эмоциональные показатели</h5>
+        </div>
+        <div class="card-body">
+            {% if emotion_totals %}
+            <div class="row g-2">
+                <div class="col-md-4"><span class="text-muted">Радость:</span> {{ emotion_totals.total_joy|default:0 }}</div>
+                <div class="col-md-4"><span class="text-muted">Грусть:</span> {{ emotion_totals.total_sorrow|default:0 }}</div>
+                <div class="col-md-4"><span class="text-muted">Гнев:</span> {{ emotion_totals.total_anger|default:0 }}</div>
+                <div class="col-md-4"><span class="text-muted">Любовь:</span> {{ emotion_totals.total_love|default:0 }}</div>
+                <div class="col-md-4"><span class="text-muted">Скука:</span> {{ emotion_totals.total_boredom|default:0 }}</div>
+                <div class="col-md-4"><span class="text-muted">Счастье:</span> {{ emotion_totals.total_happiness|default:0 }}</div>
+            </div>
+            {% else %}
+            <p class="text-muted mb-0">Пока нет данных</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- График активности -->
+    {% if daily_activity %}
+    <div class="card mb-4">
+        <div class="card-header bg-light">
+            <h5 class="mb-0"><i class="fas fa-calendar-alt me-2"></i>Активность за 30 дней</h5>
+        </div>
+        <div class="card-body">
+            <canvas id="activityChart" height="120"></canvas>
+        </div>
+    </div>
+    {% endif %}
+
+    <a href="{% url 'admin_dashboard' %}" class="btn btn-secondary">← Назад к панели</a>
+</div>
+
+{% if daily_activity %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const ctx = document.getElementById('activityChart').getContext('2d');
+    const labels = [{% for d in daily_activity %}'{{ d.date|default:"" }}'{% if not forloop.last %}, {% endif %}{% endfor %}];
+    const data = [{% for d in daily_activity %}{{ d.count }}{% if not forloop.last %}, {% endif %}{% endfor %}];
+    new Chart(ctx, {
+        type: 'bar',
+        data: { labels: labels, datasets: [{ label: 'Игр', data: data, backgroundColor: 'rgba(40, 167, 69, 0.6)' }] },
+        options: { responsive: true, scales: { y: { beginAtZero: true } } }
+    });
+});
+</script>
+{% endif %}
+{% endblock %}
