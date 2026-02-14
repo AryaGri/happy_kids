@@ -62,17 +62,32 @@ class CUsersAdmin(admin.ModelAdmin):
         return qs.prefetch_related('parents', 'doctors')
 
     def get_fieldsets(self, request, obj=None):
-        fieldsets = [
-            (None, {'fields': ['username', 'name', 'date_of_b', 'role', 'password', 'is_auth']}),
-            ('Связи', {'fields': ['children', 'patients']}),
-            ('Код подключения', {'fields': ['connection_code', 'code_expires'], 'classes': ['collapse']}),
-        ]
-        if obj and getattr(obj, 'pk', None) and obj.role == 'child':
-            fieldsets.insert(1, ('Привязки', {
-                'fields': ['parents_display', 'doctors_display'],
-                'description': 'К кому привязан ребёнок (только для просмотра)',
-            }))
-        return fieldsets
+        role = getattr(obj, 'role', None) if obj else None
+        is_child = obj and getattr(obj, 'pk', None) and role == 'child'
+
+        if is_child:
+            base = [
+                (None, {
+                    'fields': [
+                        'username', 'name', 'date_of_b', 'role', 'password', 'is_auth',
+                        'parents_display', 'doctors_display',
+                    ],
+                }),
+                ('Код подключения', {'fields': ['connection_code', 'code_expires'], 'classes': ['collapse']}),
+            ]
+        else:
+            base = [
+                (None, {'fields': ['username', 'name', 'date_of_b', 'role', 'password', 'is_auth']}),
+                ('Код подключения', {'fields': ['connection_code', 'code_expires'], 'classes': ['collapse']}),
+            ]
+        if not is_child:
+            if role == 'parent':
+                base.insert(1, ('Связи', {'fields': ['children'], 'description': 'Дети, привязанные к этому родителю'}))
+            elif role == 'doctor':
+                base.insert(1, ('Связи', {'fields': ['patients'], 'description': 'Пациенты (дети), привязанные к этому врачу'}))
+            else:
+                base.insert(1, ('Связи', {'fields': ['children', 'patients']}))
+        return base
 
 # Регистрация модели GameResult в админке
 @admin.register(GameResult)

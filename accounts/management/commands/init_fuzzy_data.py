@@ -1,6 +1,6 @@
 """
 Команда первоначального заполнения данных нечёткой логики.
-Основана на НИР "Сравнительный анализ традиционной и цифровой игровой диагностики детей".
+Создание лингвистических переменных и правил нечёткого вывода.
 
 Использование: python manage.py init_fuzzy_data
 """
@@ -17,7 +17,7 @@ from accounts.fuzzy_logic import init_fuzzy_variables, FuzzyAnalyzer
 
 
 class Command(BaseCommand):
-    help = 'Создание лингвистических переменных, функций принадлежности, правил вывода и поведенческих паттернов из НИР'
+    help = 'Создание лингвистических переменных, функций принадлежности, правил вывода и поведенческих паттернов'
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -35,7 +35,7 @@ class Command(BaseCommand):
             FuzzyLinguisticVariable.objects.all().delete()
             self.stdout.write(self.style.SUCCESS('Данные очищены'))
 
-        # 1. Лингвистические переменные из НИР (раздел 3.1.1)
+        # 1. Лингвистические переменные
         self.stdout.write('Создание лингвистических переменных...')
         init_fuzzy_variables()
         self.stdout.write(self.style.SUCCESS('Лингвистические переменные созданы'))
@@ -46,13 +46,13 @@ class Command(BaseCommand):
         # 3. Правила нечёткого вывода
         self._create_inference_rules()
 
-        # 4. Поведенческие паттерны из таблицы 1 НИР
+        # 4. Поведенческие паттерны
         self._create_behavior_patterns()
 
         self.stdout.write(self.style.SUCCESS('Инициализация нечёткой логики завершена'))
 
     def _create_membership_functions(self):
-        """Функции принадлежности для классов методов (раздел 3.1.2 НИР)"""
+        """Функции принадлежности для классов методов"""
         memberships = [
             ('traditional_test', 'Диагностическая глубина', {
                 'низкая': 0.1, 'средняя': 0.8, 'высокая': 0.5
@@ -169,7 +169,7 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS('Правила нечёткого вывода созданы'))
 
     def _create_behavior_patterns(self):
-        """Поведенческие паттерны из таблицы 1 НИР (классификация по доле ошибок)"""
+        """Поведенческие паттерны (классификация по доле ошибок)"""
         patterns = [
             {
                 'name': 'Систематический',

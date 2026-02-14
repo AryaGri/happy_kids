@@ -6,6 +6,33 @@
 
     <div class="card mb-4">
         <div class="card-body">
+            <form method="get" class="row g-2 align-items-end">
+                <div class="col-auto flex-grow-1">
+                    <label for="search" class="form-label visually-hidden">Поиск пациента</label>
+                    <input type="text" name="search" id="search" class="form-control" 
+                           placeholder="Поиск по ФИО или логину..." value="{{ search_query|default:'' }}">
+                </div>
+                <div class="col-auto">
+                    <label for="sort" class="form-label visually-hidden">Сортировка</label>
+                    <select name="sort" id="sort" class="form-control">
+                        <option value="name" {% if sort == 'name' %}selected{% endif %}>По имени А→Я</option>
+                        <option value="-name" {% if sort == '-name' %}selected{% endif %}>По имени Я→А</option>
+                        <option value="age" {% if sort == 'age' %}selected{% endif %}>По возрасту: старше → младше</option>
+                        <option value="-age" {% if sort == '-age' %}selected{% endif %}>По возрасту: младше → старше</option>
+                    </select>
+                </div>
+                <div class="col-auto">
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-search me-1"></i>Найти</button>
+                    {% if search_query or sort != 'name' %}
+                    <a href="{% url 'doctor_dashboard' %}" class="btn btn-outline-secondary">Сбросить</a>
+                    {% endif %}
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-body">
             <h5 class="card-title"><i class="fas fa-user-plus me-2"></i>Добавить пациента по коду</h5>
             <p class="text-muted small mb-3">Попросите ребёнка показать код из его личного кабинета и введите его ниже</p>
             <form method="post" class="row g-2 align-items-end">

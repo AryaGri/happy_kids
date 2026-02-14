@@ -125,7 +125,7 @@ class GameSession(models.Model):
     end_time = models.DateTimeField(null=True, blank=True)
     completed = models.BooleanField(default=False)
     
-    # Поведенческие траектории (из раздела 2.1.2 НИР)
+    # Поведенческие траектории
     behavior_trajectory = models.JSONField(default=list)  # История действий
     
     def add_action(self, action_type, action_data, timestamp=None):
@@ -176,7 +176,7 @@ class GameResult(models.Model):
     boredom = models.IntegerField(default=0)    # скука
     happiness = models.IntegerField(default=0)  # счастье
     
-    # Новые поля для нечёткого анализа (из НИР)
+    # Новые поля для нечёткого анализа
     reaction_time = models.FloatField(null=True, blank=True)  # среднее время реакции в мс
     reaction_times = models.JSONField(default=list)  # все времена реакций для анализа вариабельности
     
@@ -268,10 +268,10 @@ class Prescription(models.Model):
         ordering = ['-date_created']
 
 
-# ==================== МОДЕЛИ ДЛЯ НЕЧЁТКОЙ ЛОГИКИ (ИЗ НИР) ====================
+# ==================== МОДЕЛИ ДЛЯ НЕЧЁТКОЙ ЛОГИКИ ====================
 
 class FuzzyLinguisticVariable(models.Model):
-    """Лингвистическая переменная из НИР (раздел 3.1.1)"""
+    """Лингвистическая переменная"""
     name = models.CharField('название', max_length=100)
     description = models.TextField('описание', blank=True)
     
@@ -291,7 +291,7 @@ class FuzzyLinguisticVariable(models.Model):
 
 
 class FuzzyMembershipFunction(models.Model):
-    """Функции принадлежности для классов методов (из раздела 3.1.2 НИР)"""
+    """Функции принадлежности для классов методов"""
     METHOD_CLASSES = [
         ('traditional_test', 'Стандартизированный тест'),
         ('projective', 'Проективный метод'),
@@ -306,7 +306,7 @@ class FuzzyMembershipFunction(models.Model):
     # Значения принадлежности к каждому терму
     membership_values = models.JSONField('значения принадлежности', default=dict)
     
-    # Обоснование из НИР
+    # Обоснование
     rationale = models.TextField('обоснование', blank=True)
     
     def __str__(self):
@@ -319,11 +319,11 @@ class FuzzyMembershipFunction(models.Model):
 
 
 class DiagnosticProfile(models.Model):
-    """Диагностический профиль ребёнка из НИР (радарная диаграмма)"""
+    """Диагностический профиль ребёнка (радарная диаграмма)"""
     child = models.ForeignKey(CUsers, on_delete=models.CASCADE, related_name='diagnostic_profiles')
     date_created = models.DateTimeField(auto_now_add=True)
     
-    # 5 лингвистических переменных из НИР (стр. 20-21)
+    # 5 лингвистических переменных
     # Каждая - JSON с принадлежностью к термам
     diagnostic_depth = models.JSONField('диагностическая глубина', default=dict)
     motivational_potential = models.JSONField('мотивационный потенциал', default=dict)
@@ -441,7 +441,7 @@ class FuzzyInferenceRule(models.Model):
 
 
 class BehaviorPattern(models.Model):
-    """Поведенческие паттерны из таблицы 1 НИР"""
+    """Поведенческие паттерны"""
     name = models.CharField('название', max_length=100)
     pattern_type = models.CharField('тип', max_length=50, choices=[
         ('strategy', 'Стратегия решения'),

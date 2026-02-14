@@ -1,4 +1,6 @@
 from django.shortcuts import render, get_object_or_404, redirect
+from django.urls import reverse
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.contrib import messages
 from django.http import JsonResponse, HttpResponseForbidden, HttpResponse
 from django.utils import timezone
@@ -150,10 +152,23 @@ def admin_dashboard_view(request):
     
     # Фильтрация по роли (администраторов не показываем в списке — их нельзя редактировать/создавать)
     role_filter = request.GET.get('role')
+    search_query = request.GET.get('search', '').strip()
+    sort = request.GET.get('sort', '')
     users = CUsers.objects.exclude(role='admin')
     if role_filter:
         users = users.filter(role=role_filter)
-    users = users.order_by('-created_at', 'name')
+    if search_query:
+        users = users.filter(Q(name__icontains=search_query) | Q(username__icontains=search_query))
+    if sort == 'name':
+        users = users.order_by('name', '-created_at')
+    elif sort == '-name':
+        users = users.order_by('-name', '-created_at')
+    elif sort == 'age':
+        users = users.order_by('date_of_b', 'name')  # старше первыми
+    elif sort == '-age':
+        users = users.order_by('-date_of_b', 'name')  # младше первыми
+    else:
+        users = users.order_by('-created_at', 'name')
     
     # Статистика
     total_users = CUsers.objects.count()
@@ -176,6 +191,8 @@ def admin_dashboard_view(request):
         'pending_licenses': pending_licenses,
         'recent_users': recent_users,
         'role_filter': role_filter,
+        'search_query': search_query,
+        'sort': sort,
     }
     
     return render(request, 'admin_dashboard.html', context)
@@ -418,7 +435,17 @@ def doctor_dashboard_view(request):
         code_form = ConnectionCodeForm(user_role='doctor')
     
     # Получаем пациентов врача (добавленных по коду)
-    patients = doctor.patients.all().order_by('name')
+    sort = request.GET.get('sort', 'name')
+    if sort == 'name':
+        patients = doctor.patients.all().order_by('name')
+    elif sort == '-name':
+        patients = doctor.patients.all().order_by('-name')
+    elif sort == 'age':
+        patients = doctor.patients.all().order_by('date_of_b')  # старше первыми
+    elif sort == '-age':
+        patients = doctor.patients.all().order_by('-date_of_b')  # младше первыми
+    else:
+        patients = doctor.patients.all().order_by('name')
     
     # Поиск
     search_query = request.GET.get('search')
@@ -447,6 +474,7 @@ def doctor_dashboard_view(request):
         'total_patients': total_patients,
         'total_prescriptions': total_prescriptions,
         'search_query': search_query,
+        'sort': sort,
         'code_form': code_form,
     }
     
@@ -524,6 +552,35 @@ def patient_detail_view(request, patient_id):
     from .models import DiagnosticDiagnosis
     detected_diagnoses = DiagnosticDiagnosis.objects.filter(code__in=profile.detected_diagnoses) if profile.detected_diagnoses else []
     
+    # Диагностическая панель
+    from .diagnostic_panel import (
+        get_fuzzy_analysis_for_panel,
+        get_heatmap_data,
+        get_dynamics_data,
+        get_correlation_matrix,
+        get_adaptive_recommendations,
+        BASE_RECOMMENDATIONS,
+        VARIABLE_DESCRIPTIONS,
+    )
+    panel_data = None
+    adaptive_recs = []
+    heatmap_data = {'matrix': [], 'systems': [], 'indicators': [], 'rows': []}
+    dynamics_data = None
+    corr_data = {'matrix': [], 'labels': [], 'rows': []}
+    if game_results:
+        try:
+            gr_list = list(game_results)
+            panel_data = get_fuzzy_analysis_for_panel(analyzer, profile, gr_list, patient)
+            adaptive_recs = get_adaptive_recommendations(
+                panel_data['params_results'],
+                panel_data['diagnostic_params']
+            )
+            heatmap_data = get_heatmap_data(gr_list, profile)
+            dynamics_data = get_dynamics_data(gr_list)
+            corr_data = get_correlation_matrix(gr_list)
+        except Exception:
+            pass
+    
     context = {
         'doctor': doctor,
         'patient': patient,
@@ -537,6 +594,17 @@ def patient_detail_view(request, patient_id):
         'profile': profile,
         'radar_data': json.dumps(radar_data),
         'behavior_analysis': behavior_analysis,
+        'panel_data': panel_data,
+        'panel_data_json': json.dumps(panel_data) if panel_data else 'null',
+        'heatmap_data': heatmap_data,
+        'heatmap_data_json': json.dumps(heatmap_data),
+        'dynamics_data': dynamics_data,
+        'dynamics_data_json': json.dumps(dynamics_data) if dynamics_data else 'null',
+        'corr_data': corr_data,
+        'corr_data_json': json.dumps(corr_data),
+        'adaptive_recommendations': adaptive_recs,
+        'base_recommendations': BASE_RECOMMENDATIONS,
+        'variable_descriptions': VARIABLE_DESCRIPTIONS,
     }
     
     return render(request, 'patient_detail.html', context)
@@ -646,7 +714,17 @@ def parent_dashboard_view(request, user_id):
         return HttpResponseForbidden('Доступ запрещён')
     
     parent = get_object_or_404(CUsers, id=user_id, role='parent')
-    children = parent.children.all()
+    sort = request.GET.get('sort', 'name')
+    if sort == 'name':
+        children = parent.children.all().order_by('name')
+    elif sort == '-name':
+        children = parent.children.all().order_by('-name')
+    elif sort == 'age':
+        children = parent.children.all().order_by('date_of_b')  # старше первыми
+    elif sort == '-age':
+        children = parent.children.all().order_by('-date_of_b')  # младше первыми
+    else:
+        children = parent.children.all().order_by('name')
     
     # Присоединение по коду
     if request.method == 'POST' and 'connect_code' in request.POST:
@@ -682,6 +760,7 @@ def parent_dashboard_view(request, user_id):
     context = {
         'parent': parent,
         'children_stats': children_stats,
+        'sort': sort,
         'code_form': code_form,
     }
     
@@ -1783,19 +1862,30 @@ def change_password_view(request):
 
 # ==================== ВСПОМОГАТЕЛЬНЫЕ ПРЕДСТАВЛЕНИЯ ====================
 
+def _get_redirect_url(request, default='admin_dashboard'):
+    """Возвращает безопасный URL для редиректа (next или referer), иначе — дашборд."""
+    next_url = request.POST.get('next') or request.GET.get('next')
+    if next_url and url_has_allowed_host_and_scheme(next_url, allowed_hosts={request.get_host()}):
+        return next_url
+    ref = request.META.get('HTTP_REFERER')
+    if ref and url_has_allowed_host_and_scheme(ref, allowed_hosts={request.get_host()}):
+        return ref
+    return reverse(default)
+
+
 def edit_user_view(request, id):
     """Редактирование пользователя (для администратора)"""
     if request.session.get('user_role') != 'admin':
         return HttpResponseForbidden('Доступ запрещён')
     
-    user = get_object_or_404(CUsers, pk=id)
+    user = get_object_or_404(CUsers.objects.prefetch_related('parents', 'doctors'), pk=id)
     
     if request.method == 'POST':
         form = UserEditForm(request.POST, instance=user)
         if form.is_valid():
             form.save()
             messages.success(request, f'Пользователь {user.name} обновлён')
-            return redirect('admin_dashboard')
+            return redirect(_get_redirect_url(request))
     else:
         form = UserEditForm(instance=user)
     
@@ -1838,7 +1928,7 @@ def edit_parent_view(request, id):
         if form.is_valid():
             form.save()
             messages.success(request, 'Данные сохранены')
-            return redirect('admin_dashboard')
+            return redirect(_get_redirect_url(request))
     else:
         form = UserEditForm(instance=user)
     
@@ -1883,7 +1973,7 @@ def edit_doctor_view(request, id):
         if form.is_valid():
             form.save()
             messages.success(request, f'Врач {user.name} обновлён')
-            return redirect('admin_dashboard')
+            return redirect(_get_redirect_url(request))
     else:
         form = UserEditForm(instance=user)
     

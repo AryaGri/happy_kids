@@ -1,6 +1,5 @@
 """
 Модуль нечёткой логики для диагностики детей
-Основан на главе 3 НИР "Сравнительный анализ традиционной и цифровой игровой диагностики детей"
 """
 
 import numpy as np
@@ -119,10 +118,10 @@ class FuzzyVariable:
 class FuzzyAnalyzer:
     """
     Основной класс для нечёткого анализа диагностических данных
-    Реализует методы из разделов 2.2, 3.1 и 3.5 НИР
+    Реализует методы нечёткой диагностики
     """
     
-    # Предопределённые лингвистические переменные из НИР (раздел 3.1.1)
+    # Предопределённые лингвистические переменные
     LINGUISTIC_VARIABLES = {
         'diagnostic_depth': {
             'name': 'Диагностическая глубина',
@@ -195,7 +194,7 @@ class FuzzyAnalyzer:
     
     def analyze_reaction_times(self, reaction_times: List[float]) -> Dict[str, float]:
         """
-        Анализ времени реакции (раздел 2.2.1 НИР)
+        Анализ времени реакции
         
         Args:
             reaction_times: список времени реакции в мс
@@ -257,7 +256,7 @@ class FuzzyAnalyzer:
     
     def analyze_strategy(self, game_results: List[GameResult]) -> str:
         """
-        Определение стратегии решения (раздел 2.4.2 НИР)
+        Определение стратегии решения
         
         Returns:
             тип стратегии: 'systematic', 'impulsive', 'adaptive', 'chaotic'
@@ -313,7 +312,7 @@ class FuzzyAnalyzer:
     
     def analyze_error_patterns(self, game_results: List[GameResult]) -> Dict[str, Any]:
         """
-        Анализ паттернов ошибок (из таблицы 1 НИР)
+        Анализ паттернов ошибок
         
         Returns:
             словарь с анализом ошибок
@@ -414,7 +413,7 @@ class FuzzyAnalyzer:
     
     def calculate_diagnostic_depth(self, game_results: List[GameResult]) -> Dict[str, float]:
         """
-        Расчёт диагностической глубины (лингвистическая переменная А из НИР)
+        Расчёт диагностической глубины (лингвистическая переменная А)
         Для каждого типа: Painting, Dialog, Choice, Memory, Puzzle, Sequence — своя логика.
         """
         if not game_results:
@@ -440,7 +439,7 @@ class FuzzyAnalyzer:
     
     def calculate_motivation(self, game_results: List[GameResult]) -> Dict[str, float]:
         """
-        Расчёт мотивационного потенциала (лингвистическая переменная В из НИР)
+        Расчёт мотивационного потенциала (лингвистическая переменная В)
         Memory: levels_completed, pairs_found; Puzzle: completed; Sequence: level_reached, mistakes.
         Painting/Dialog/Choice: joy+happiness.
         """
@@ -488,7 +487,7 @@ class FuzzyAnalyzer:
     
     def calculate_objectivity(self, game_results: List[GameResult]) -> Dict[str, float]:
         """
-        Расчёт объективности (лингвистическая переменная С из НИР)
+        Расчёт объективности (лингвистическая переменная С)
         Memory, Puzzle, Sequence — объективные метрики; Painting, Dialog, Choice — субъективные.
         """
         if not game_results:
@@ -513,7 +512,7 @@ class FuzzyAnalyzer:
     
     def calculate_ecological_validity(self, game_results: List[GameResult]) -> Dict[str, float]:
         """
-        Расчёт экологической валидности (лингвистическая переменная D из НИР)
+        Расчёт экологической валидности (лингвистическая переменная D)
         Choice — свобода выбора; Painting — творчество; Dialog — естественный диалог.
         Memory, Puzzle, Sequence — структурированные, но игровые.
         """
@@ -538,7 +537,7 @@ class FuzzyAnalyzer:
     
     def calculate_dynamic_assessment(self, game_results: List[GameResult]) -> Dict[str, float]:
         """
-        Расчёт потенциала для динамической оценки (лингвистическая переменная Е из НИР)
+        Расчёт потенциала для динамической оценки (лингвистическая переменная Е)
         Memory: levels_completed; Sequence: level_reached; Puzzle: completed.
         Множество игр и прогресс по уровням = широкий потенциал.
         """
@@ -633,7 +632,7 @@ class FuzzyAnalyzer:
     
     def create_diagnostic_profile(self, child_id: int) -> DiagnosticProfile:
         """
-        Создание диагностического профиля ребёнка (раздел 3.1.3 НИР)
+        Создание диагностического профиля ребёнка
         
         Args:
             child_id: ID ребёнка
@@ -1019,7 +1018,7 @@ def init_fuzzy_variables():
         FuzzyLinguisticVariable.objects.get_or_create(
             name=var_data['name'],
             defaults={
-                'description': f'Лингвистическая переменная из НИР: {var_name}',
+                'description': f'Лингвистическая переменная: {var_name}',
                 'terms': var_data['terms'],
                 'purpose': 'Диагностика когнитивных и эмоциональных процессов'
             }

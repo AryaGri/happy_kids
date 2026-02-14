@@ -7,6 +7,7 @@
       <h2>Редактировать врача: {{ doctor.username }}</h2>
 
       {% csrf_token %}
+      <input type="hidden" name="next" value="{{ request.path }}">
     <div class="form-group">
       <label for="username">Логин:</label>
       <input type="text" name="username" id="username" class="form-control" value="{{ doctor.username }}" required>
@@ -62,12 +63,17 @@
     <ul class="list-group mt-3">
       {% for patient in assigned_patients %}
       <li class="list-group-item d-flex justify-content-between align-items-center">
-        {{ patient.name }} ({{ patient.date_of_b|date:"d.m.Y" }})
-        <form method="POST" class="d-inline" onsubmit="return confirm('Отвязать пациента?');">
+        <span>
+          <a href="{% url 'edit_user' patient.id %}?next={% url 'edit_doctor' doctor.id %}">{{ patient.name }}</a> ({{ patient.date_of_b|date:"d.m.Y" }})
+        </span>
+        <span>
+          <a href="{% url 'edit_user' patient.id %}?next={% url 'edit_doctor' doctor.id %}" class="btn btn-sm btn-outline-primary me-1">Редактировать</a>
+          <form method="POST" class="d-inline" onsubmit="return confirm('Отвязать пациента?');">
           {% csrf_token %}
           <input type="hidden" name="remove_patient" value="{{ patient.id }}">
           <button type="submit" class="btn btn-sm btn-outline-danger">Отвязать</button>
-        </form>
+          </form>
+        </span>
       </li>
       {% empty %}
       <li class="list-group-item text-muted">Нет привязанных пациентов</li>

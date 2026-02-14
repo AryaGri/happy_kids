@@ -6,6 +6,7 @@
 
     <form method="POST" enctype="multipart/form-data">
       {% csrf_token %}
+      <input type="hidden" name="next" value="{{ request.GET.next }}">
       <div class="form-group">
         <label for="username">Логин:</label>
         <input type="text" name="username" id="username" class="form-control" value="{{ user.username }}" required>
@@ -36,6 +37,37 @@
         </select>
         <small class="text-muted">Роль администратора нельзя создать или назначить через интерфейс</small>
       </div>
+
+      {% if user.role == 'child' %}
+      <div class="form-group mt-3 p-3 border rounded bg-light">
+        <h6 class="mb-2">Привязки ребёнка</h6>
+        <p class="text-muted small mb-2">К каким родителям и врачам привязан ребёнок. Чтобы изменить — отредактируйте соответствующего родителя или врача.</p>
+        <div class="mb-2">
+          <strong>Родители:</strong>
+          {% if user.parents.all %}
+          <ul class="mb-0 mt-1">
+            {% for p in user.parents.all %}
+            <li><a href="{% url 'edit_parent' p.id %}">{{ p.name }} ({{ p.username }})</a></li>
+            {% endfor %}
+          </ul>
+          {% else %}
+          <span class="text-muted">Не привязан</span>
+          {% endif %}
+        </div>
+        <div>
+          <strong>Врачи:</strong>
+          {% if user.doctors.all %}
+          <ul class="mb-0 mt-1">
+            {% for d in user.doctors.all %}
+            <li><a href="{% url 'edit_doctor' d.id %}">{{ d.name }} ({{ d.username }})</a></li>
+            {% endfor %}
+          </ul>
+          {% else %}
+          <span class="text-muted">Не привязан</span>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
 
       <button type="submit" class="btn btn-primary">Сохранить изменения</button>
     </form>
