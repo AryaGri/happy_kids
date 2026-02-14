@@ -8,7 +8,7 @@ import os
 import sys
 from pathlib import Path
 
-DEFAULT_BASE_URL = "http://127.0.0.1:8000"
+DEFAULT_BASE_URL = "https://happy-kids-iu6.ru"
 
 
 def _get_base_dir() -> Path:
