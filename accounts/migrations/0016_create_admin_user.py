@@ -16,14 +16,6 @@ def create_admin(apps, schema_editor):
             password=make_password('123456'),
             is_auth=True,
         )
-        CUsers.objects.create(
-            username='admin1',
-            name='Администратор',
-            date_of_b=date(1990, 1, 1),
-            role='admin',
-            password=make_password('123456'),
-            is_auth=True,
-        )
 
 
 def reverse_create_admin(apps, schema_editor):

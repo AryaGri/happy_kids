@@ -4,6 +4,17 @@ import django.db.models.deletion
 from django.db import migrations, models
 
 
+def remove_duplicate_usernames(apps, schema_editor):
+    """Удаляет дубликаты username перед добавлением unique constraint."""
+    CUsers = apps.get_model('accounts', 'CUsers')
+    seen = set()
+    for user in CUsers.objects.order_by('id'):
+        if user.username in seen:
+            user.delete()
+        else:
+            seen.add(user.username)
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -11,6 +22,7 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        migrations.RunPython(remove_duplicate_usernames, migrations.RunPython.noop),
         migrations.AlterModelOptions(
             name='cusers',
             options={'verbose_name': 'Пользователь', 'verbose_name_plural': 'Пользователи'},
