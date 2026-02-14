@@ -8,13 +8,13 @@
     .diagnostic-panel { max-width: 1400px; margin: 0 auto; }
     .chart-card { margin-bottom: 1.5rem; }
     .axis-tooltip { cursor: help; }
-    .mf-chart { height: 220px; }
+    .mf-chart { height: 220px; max-width: 100%; display: block; }
+    .mf-card .card-body { overflow: hidden; }
     .heatmap-cell { cursor: help; min-width: 50px; height: 40px; text-align: center; font-size: 0.8rem; }
     .fuzzy-block { background: #f8f9fa; border-left: 4px solid #0d6efd; padding: 1rem; margin-bottom: 1rem; }
     .rec-block { background: #e8f5e9; border-left: 4px solid #198754; padding: 1rem; margin-bottom: 1rem; }
     .base-rec-block { background: #e3f2fd; border: 1px solid #2196f3; border-radius: 8px; padding: 1.5rem; }
-    .heatmap-low { background: rgba(0,0,139,0.4); }
-    .heatmap-high { background: rgba(139,0,0,0.4); }
+    .heatmap-cell { font-weight: 500; }
 </style>
 {% endblock %}
 
@@ -87,6 +87,24 @@
                         <span class="me-3">┄┄┄ Эталон традиционных методов</span>
                         <span>· · · Эталон цифровых игровых методов</span>
                     </div>
+                    <div class="mt-3 p-3 bg-light rounded border">
+                        <h6 class="text-primary"><i class="fas fa-info-circle me-1"></i>Расшифровка для врача</h6>
+                        <p class="mb-2 small">Сравнительная радарная диаграмма отображает пять диагностических осей (A–E) в единой шкале 0–100. <strong>Сплошная линия</strong> — интегральный профиль ребёнка; <strong>пунктирная серая</strong> — эталон традиционных методов; <strong>синяя пунктирная</strong> — эталон цифровых игровых методов.</p>
+                        <p class="mb-3 small"><strong>Оси:</strong> A — диагностическая глубина; B — мотивационный потенциал; C — объективность; D — экологическая валидность; E — динамическая оценка.</p>
+                        <h6 class="text-secondary mt-3 mb-2">Интерпретация по каждой оси для данного ребёнка</h6>
+                        <ul class="list-unstyled mb-0">
+                            {% for item in panel_data.radar_axis_interpretations %}
+                            <li class="mb-3 small">
+                                <strong>{{ item.axis }}:</strong> {{ item.interpretation }}
+                                {% if item.doctor_recommendation %}
+                                <div class="mt-1 p-2 bg-white rounded border border-primary border-opacity-25">
+                                    <strong class="text-primary">→ Рекомендации для врача:</strong> {{ item.doctor_recommendation }}
+                                </div>
+                                {% endif %}
+                            </li>
+                            {% endfor %}
+                        </ul>
+                    </div>
                 </div>
             </div>
 
@@ -96,23 +114,75 @@
                     <h5 class="mb-0"><i class="fas fa-project-diagram me-2"></i>Функции принадлежности по диагностируемым параметрам</h5>
                 </div>
                 <div class="card-body">
-                    <div class="row">
+                    <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-3">
                         {% for param_id, pdata in panel_data.params_results.items %}
-                        <div class="col-md-6 col-lg-4 mb-4">
-                            <div class="card h-100">
+                        <div class="col">
+                            <div class="card h-100 mf-card">
                                 <div class="card-header py-2"><strong>{{ pdata.name }}</strong></div>
                                 <div class="card-body py-2">
-                                    <canvas id="mfChart-{{ param_id }}" class="mf-chart w-100"></canvas>
-                                    <p class="small mb-1">Текущее значение: <strong>{{ pdata.value|floatformat:2 }}</strong></p>
-                                    <div class="small">
+                                    <div class="position-relative" style="height: 220px;">
+                                        <canvas id="mfChart-{{ param_id }}" class="mf-chart w-100" data-mf-value="{{ pdata.value }}"></canvas>
+                                    </div>
+                                    <p class="small mb-1 mt-2">Текущее значение: <strong>{{ pdata.value|floatformat:2 }}</strong></p>
+                                    <div class="small mb-2">
                                         {% for term, mu in pdata.memberships.items %}
                                         <span class="me-2">{{ term }}: μ={{ mu }}</span>
                                         {% endfor %}
                                     </div>
+                                    <div class="p-2 bg-light rounded small border-start border-3 border-primary">
+                                        <strong>Интерпретация:</strong> {{ pdata.interpretation }}
+                                    </div>
+                                    {% if pdata.doctor_purpose or pdata.child_impact or pdata.possible_causes or pdata.recommendations %}
+                                    <details class="mt-2 small">
+                                        <summary class="text-primary"><strong>Клиническая расшифровка для врача</strong></summary>
+                                        {% if pdata.doctor_purpose %}
+                                        <p class="mb-1 mt-2">{{ pdata.doctor_purpose }}</p>
+                                        {% endif %}
+                                        {% if pdata.child_impact %}
+                                        <p class="mb-1"><strong>Как сказывается на ребёнке:</strong> {{ pdata.child_impact }}</p>
+                                        {% endif %}
+                                        {% if pdata.possible_causes %}
+                                        <p class="mb-1"><strong>Возможные причины:</strong></p>
+                                        <ul class="mb-1 small">
+                                            {% for c in pdata.possible_causes %}<li>{{ c }}</li>{% endfor %}
+                                        </ul>
+                                        {% endif %}
+                                        {% if pdata.recommendations %}
+                                        <p class="mb-1"><strong>Как исправить/поддержать:</strong></p>
+                                        <ul class="mb-0 small">
+                                            {% for r in pdata.recommendations %}<li>{{ r }}</li>{% endfor %}
+                                        </ul>
+                                        {% endif %}
+                                    </details>
+                                    {% endif %}
                                 </div>
                             </div>
                         </div>
                         {% endfor %}
+                    </div>
+                    <div class="mt-3 p-3 bg-light rounded border">
+                        <h6 class="text-primary"><i class="fas fa-info-circle me-1"></i>Расшифровка для врача</h6>
+                        <p class="mb-2 small">Графики функций принадлежности показывают степень соответствия сырых метрик (нормированных 0–1) нечётким термам. По оси X — значение показателя; по оси Y — μ (степень принадлежности, 0–1). Вертикальная линия показывает текущее значение ребёнка.</p>
+                        <p class="mb-2 small"><strong>Когда появились проблемы/улучшения?</strong> {{ panel_data.mf_timeline_note }}</p>
+                        <p class="mb-0 small">Для каждого параметра разверните блок «Клиническая расшифровка» — там указаны: зачем врачу этот показатель, как он сказывается на ребёнке, возможные причины и рекомендации.</p>
+                    </div>
+                    <div class="mt-3 p-3 bg-light rounded border">
+                        <h6 class="text-secondary"><i class="fas fa-child me-1"></i>Расшифровка результатов со значениями для ребёнка</h6>
+                        <p class="text-muted small mb-2">Сводная таблица по диагностируемым параметрам для {{ patient.name }}</p>
+                        <div class="table-responsive">
+                            <table class="table table-bordered table-sm small">
+                                <thead>
+                                    <tr><th>Параметр</th><th>Значение (0–1)</th><th>Доминирующий терм</th><th>μ</th><th>Интерпретация</th></tr>
+                                </thead>
+                                <tbody>
+                                    {% for param_id, pr in panel_data.params_results.items %}
+                                    <tr>
+                                        <td>{{ pr.name }}</td><td>{{ pr.value|floatformat:2 }}</td><td>{{ pr.dominant_term }}</td><td>{{ pr.dominant_mu }}</td><td>{{ pr.interpretation }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -137,15 +207,52 @@
                             {% for row in heatmap_data.rows %}
                             <tr>
                                 <td><strong>{{ row.system }}</strong></td>
-                                {% for val in row.values %}
-                                <td class="heatmap-cell {% if val < -0.5 %}heatmap-low{% elif val > 0.5 %}heatmap-high{% endif %}" data-val="{{ val }}" title="Отклонение: {{ val }}σ">
-                                    {{ val|floatformat:2 }}
+                                {% for cell in row.cells %}
+                                <td class="heatmap-cell" style="{{ cell.style }}" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-html="false" title="{{ cell.interpretation }}">
+                                    {{ cell.value|floatformat:2 }}
                                 </td>
                                 {% endfor %}
                             </tr>
                             {% endfor %}
                         </tbody>
                     </table>
+                    <div class="mt-3 p-3 bg-light rounded border">
+                        <h6 class="text-primary"><i class="fas fa-info-circle me-1"></i>Что даёт врачу Heatmap</h6>
+                        <p class="mb-2 small">{{ heatmap_data.doctor_purpose }}</p>
+                        <p class="mb-2 small"><strong>Оттенки синего</strong> — ниже нормы; <strong>оттенки красного</strong> — выше нормы; светлые тона — в норме. Наведите на ячейку для подсказки.</p>
+                        <h6 class="text-secondary mt-3 mb-2">Что значит выше нормы</h6>
+                        <p class="small mb-1">{{ heatmap_data.above_norm.meaning }}</p>
+                        <p class="small mb-1"><strong>Возможные причины:</strong> {{ heatmap_data.above_norm.causes|join:"; " }}</p>
+                        <p class="small mb-3"><strong>Рекомендации:</strong> {{ heatmap_data.above_norm.recommendations|join:"; " }}</p>
+                        <h6 class="text-secondary mb-2">Что значит ниже нормы</h6>
+                        <p class="small mb-1">{{ heatmap_data.below_norm.meaning }}</p>
+                        <p class="small mb-1"><strong>Возможные причины:</strong> {{ heatmap_data.below_norm.causes|join:"; " }}</p>
+                        <p class="small mb-3"><strong>Рекомендации:</strong> {{ heatmap_data.below_norm.recommendations|join:"; " }}</p>
+                        <details class="small">
+                            <summary>По каждой ячейке</summary>
+                            <ul class="mt-1 mb-0">
+                                {% for ci in heatmap_data.cell_interpretations %}
+                                <li><strong>{{ ci.system }} — {{ ci.indicator }}:</strong> {{ ci.interpretation }}</li>
+                                {% endfor %}
+                            </ul>
+                        </details>
+                    </div>
+                    <div class="mt-3 p-3 bg-light rounded border">
+                        <h6 class="text-secondary"><i class="fas fa-child me-1"></i>Расшифровка для данного ребёнка</h6>
+                        <ul class="mb-0 small">
+                            {% for s in heatmap_data.summary_interpretation %}
+                            <li>{{ s }}</li>
+                            {% endfor %}
+                        </ul>
+                        {% if heatmap_data.system_interpretations %}
+                        <p class="small mt-2 mb-1"><strong>По системам с отклонениями:</strong></p>
+                        <ul class="mb-0 small">
+                            {% for si in heatmap_data.system_interpretations %}
+                            <li><strong>{{ si.system }}</strong> ({{ si.direction }}): {{ si.guide }}</li>
+                            {% endfor %}
+                        </ul>
+                        {% endif %}
+                    </div>
                 </div>
             </div>
             {% endif %}
@@ -158,84 +265,154 @@
                 </div>
                 <div class="card-body">
                     <div style="height: 300px;"><canvas id="dynamicsChart"></canvas></div>
+                    <div class="mt-3 p-3 bg-light rounded border">
+                        <h6 class="text-primary"><i class="fas fa-info-circle me-1"></i>Расшифровка для врача</h6>
+                        <p class="mb-2 small">График показывает изменение интегрального показателя (радость + счастье + успешность) по датам. Сплошная линия — фактические значения; пунктирная — средняя норма.</p>
+                        {% if dynamics_data.interpretation %}
+                        <h6 class="text-secondary mt-3 mb-2">Интерпретация для данного ребёнка</h6>
+                        {% if dynamics_data.interpretation.trend == 'worsening' %}
+                        <p class="small text-danger fw-bold">Наблюдается ухудшение динамики.</p>
+                        {% if dynamics_data.interpretation.problems %}
+                        <p class="small mb-1"><strong>Возможные причины и проблемные показатели:</strong></p>
+                        <ul class="small mb-2">
+                            {% for p in dynamics_data.interpretation.problems %}
+                            <li><strong>{{ p.indicator }}:</strong> {{ p.cause }}</li>
+                            {% endfor %}
+                        </ul>
+                        <p class="small mb-1"><strong>Рекомендуемые действия:</strong></p>
+                        <ul class="small mb-2">
+                            {% for s in dynamics_data.interpretation.solutions %}
+                            <li>{{ s }}</li>
+                            {% endfor %}
+                        </ul>
+                        {% endif %}
+                        {% if dynamics_data.interpretation.unstable_note %}
+                        <p class="small text-muted">{{ dynamics_data.interpretation.unstable_note }}</p>
+                        {% endif %}
+                        {% elif dynamics_data.interpretation.trend == 'improvement' %}
+                        <p class="small text-success fw-bold">Наблюдается улучшение динамики.</p>
+                        <p class="small mb-1"><strong>В чём стало лучше:</strong></p>
+                        <ul class="small mb-2">
+                            {% for imp in dynamics_data.interpretation.improvements %}
+                            <li>{{ imp }}</li>
+                            {% endfor %}
+                        </ul>
+                        {% if dynamics_data.interpretation.causes %}
+                        <p class="small mb-0"><strong>Возможные причины улучшения:</strong> {{ dynamics_data.interpretation.causes|join:"; " }}</p>
+                        {% endif %}
+                        {% else %}
+                        <p class="small fw-bold">Динамика стабильна.</p>
+                        <ul class="small mb-2">
+                            {% for imp in dynamics_data.interpretation.improvements %}
+                            <li>{{ imp }}</li>
+                            {% endfor %}
+                        </ul>
+                        {% if dynamics_data.interpretation.is_unstable and dynamics_data.interpretation.unstable %}
+                        <div class="p-2 bg-warning bg-opacity-25 rounded border border-warning mb-2">
+                            <p class="small fw-bold mb-1">Нестабильная динамика</p>
+                            <p class="small mb-1">{{ dynamics_data.interpretation.unstable.meaning }}</p>
+                            <p class="small mb-1"><strong>Возможные причины:</strong></p>
+                            <ul class="small mb-1">{% for c in dynamics_data.interpretation.unstable.possible_causes %}<li>{{ c }}</li>{% endfor %}</ul>
+                            <p class="small mb-1"><strong>Рекомендации:</strong></p>
+                            <ul class="small mb-0">{% for r in dynamics_data.interpretation.unstable.recommendations %}<li>{{ r }}</li>{% endfor %}</ul>
+                        </div>
+                        {% endif %}
+                        {% if dynamics_data.interpretation.is_stably_low and dynamics_data.interpretation.stably_low %}
+                        <div class="p-2 bg-info bg-opacity-25 rounded border border-info">
+                            <p class="small fw-bold mb-1">Стабильно ниже нормы</p>
+                            <p class="small mb-1">{{ dynamics_data.interpretation.stably_low.meaning }}</p>
+                            <p class="small mb-1">{{ dynamics_data.interpretation.stably_low.what_it_means }}</p>
+                            <p class="small mb-1"><strong>Возможные причины:</strong></p>
+                            <ul class="small mb-1">{% for c in dynamics_data.interpretation.stably_low.possible_causes %}<li>{{ c }}</li>{% endfor %}</ul>
+                            <p class="small mb-1"><strong>Как улучшить — рекомендации:</strong></p>
+                            <ul class="small mb-0">{% for r in dynamics_data.interpretation.stably_low.recommendations %}<li>{{ r }}</li>{% endfor %}</ul>
+                        </div>
+                        {% endif %}
+                        {% endif %}
+                        {% endif %}
+                    </div>
+                    <div class="mt-3 p-3 bg-light rounded border">
+                        <h6 class="text-secondary"><i class="fas fa-child me-1"></i>Расшифровка для данного ребёнка</h6>
+                        {% if dynamics_data.interpretation %}
+                        {% if dynamics_data.interpretation.trend == 'worsening' %}
+                        <p class="small mb-0">Наблюдается ухудшение. {{ dynamics_data.interpretation.problems|length }} проблемных показателя. См. рекомендации выше.</p>
+                        {% elif dynamics_data.interpretation.trend == 'improvement' %}
+                        <p class="small mb-0">Наблюдается улучшение. {{ dynamics_data.interpretation.improvements|length }} положительных изменений.</p>
+                        {% else %}
+                        <p class="small mb-0">Динамика стабильна. Среднее значение {{ dynamics_data.interpretation.mean|floatformat:1 }}.</p>
+                        {% if dynamics_data.interpretation.is_stably_low %} Показатели стабильно ниже нормы — см. блок выше.{% endif %}
+                        {% endif %}
+                        {% else %}
+                        <p class="small mb-0">Недостаточно данных для интерпретации динамики.</p>
+                        {% endif %}
+                    </div>
                 </div>
             </div>
             {% endif %}
-
-            <!-- 2. Блоки нечёткого анализа -->
-            <h4 class="mt-4 mb-3">Результаты нечёткого анализа</h4>
-            {% for param_id, pr in panel_data.params_results.items %}
-            <div class="fuzzy-block">
-                <h6>ПАРАМЕТР: {{ pr.name }}</h6>
-                <p class="mb-1">Источник: {{ pr.source }}</p>
-                <p class="mb-2">Текущее значение: <strong>{{ pr.value|floatformat:2 }}</strong> (нормированное)</p>
-                <p><strong>Функции принадлежности:</strong></p>
-                <ul class="mb-2">
-                    {% for term, mu in pr.memberships.items %}
-                    <li>{{ term }}: μ = {{ mu }}</li>
-                    {% endfor %}
-                </ul>
-                <p><strong>Интерпретация:</strong> {{ pr.interpretation }} (μ={{ pr.dominant_mu }})</p>
-            </div>
-            {% endfor %}
-
-            <!-- 3. Адаптивные рекомендации -->
-            <h4 class="mt-4 mb-3">Адаптивные рекомендации</h4>
-            {% for rec in adaptive_recommendations %}
-            <div class="rec-block">
-                <h6>{{ rec.name }} (терм: {{ rec.term }})</h6>
-                <p><strong>Кратко:</strong> {{ rec.brief }}</p>
-                <p class="small"><strong>Развёрнуто:</strong> {{ rec.extended }}</p>
-                <p class="mb-1"><strong>Для родителя/педагога:</strong></p>
-                <ul class="small">
-                    {% for step in rec.parent_steps %}<li>{{ step }}</li>{% endfor %}
-                </ul>
-                <p class="mb-1"><strong>Для врача/психолога:</strong></p>
-                <ul class="small mb-0">
-                    {% for step in rec.doctor_steps %}<li>{{ step }}</li>{% endfor %}
-                </ul>
-            </div>
-            {% endfor %}
 
             {% else %}
             <p class="text-muted">Недостаточно данных для диагностической панели</p>
             {% endif %}
 
-            <!-- 4. Базовые рекомендации -->
-            <div class="base-rec-block mt-4">
-                <h5><i class="fas fa-heartbeat me-2"></i>Базовые рекомендации (для всех возрастных групп)</h5>
-                <p class="text-muted small">На основании СанПиН 2.2.2/2.4.1340-03 и общих принципов психогигиены</p>
-                <div class="row">
-                    <div class="col-md-6">
-                        <h6>1. Режим сна</h6>
-                        <ul class="small">
-                            {% for age, hours in base_recommendations.sleep.items %}
-                            <li>{{ age }} лет: {{ hours }}</li>
-                            {% endfor %}
-                        </ul>
-                        <h6>2. Экранное время</h6>
-                        <ul class="small">
-                            {% for age, time in base_recommendations.screen.items %}
-                            <li>{{ age }} лет: {{ time }}</li>
-                            {% endfor %}
-                        </ul>
-                        <p class="small">Обязательные перерывы каждые 20-25 минут</p>
-                    </div>
-                    <div class="col-md-6">
-                        <h6>3. Физическая активность</h6>
-                        <p class="small">{{ base_recommendations.physical }}</p>
-                        <h6>4. Питание</h6>
-                        <ul class="small">
-                            {% for item in base_recommendations.nutrition %}<li>{{ item }}</li>{% endfor %}
-                        </ul>
-                        <h6>5. Когнитивная стимуляция</h6>
-                        <ul class="small">
-                            {% for item in base_recommendations.cognitive %}<li>{{ item }}</li>{% endfor %}
-                        </ul>
-                        <h6>6. Эмоциональное благополучие</h6>
-                        <ul class="small mb-0">
-                            {% for item in base_recommendations.emotional %}<li>{{ item }}</li>{% endfor %}
-                        </ul>
+            <!-- 4. Общий вывод и рекомендации -->
+            <div class="card mt-4 chart-card border-primary">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0"><i class="fas fa-file-medical-alt me-2"></i>Общий вывод и рекомендуемые назначения</h5>
+                </div>
+                <div class="card-body">
+                    <p class="mb-3">На основании радарной диаграммы, функций принадлежности, heatmap и динамики показателей сформированы следующие выводы и рекомендации.</p>
+                    <h6>Адаптивные рекомендации по параметрам</h6>
+                    <ul class="mb-3">
+                        {% for rec in adaptive_recommendations %}
+                        <li><strong>{{ rec.name }}:</strong> {{ rec.brief }}</li>
+                        {% endfor %}
+                    </ul>
+                    <h6>Рекомендации для родителя/педагога</h6>
+                    <ul class="mb-3">
+                        {% if adaptive_recommendations %}
+                        {% for step in adaptive_recommendations.0.parent_steps %}<li>{{ step }}</li>{% endfor %}
+                        {% endif %}
+                    </ul>
+                    <h6>Рекомендации для врача/психолога</h6>
+                    <ul class="mb-4">
+                        {% if adaptive_recommendations %}
+                        {% for step in adaptive_recommendations.0.doctor_steps %}<li>{{ step }}</li>{% endfor %}
+                        {% endif %}
+                    </ul>
+                    <h6 class="text-primary mt-3">Назначения по СанПиН 2.2.2/2.4.1340-03</h6>
+                    <p class="text-muted small mb-2">Базовые гигиенические рекомендации для всех возрастных групп</p>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <p class="mb-1 small"><strong>1. Режим сна:</strong></p>
+                            <ul class="small mb-2">
+                                {% for age, hours in base_recommendations.sleep.items %}
+                                <li>{{ age }} лет: {{ hours }}</li>
+                                {% endfor %}
+                            </ul>
+                            <p class="mb-1 small"><strong>2. Экранное время:</strong></p>
+                            <ul class="small mb-2">
+                                {% for age, time in base_recommendations.screen.items %}
+                                <li>{{ age }} лет: {{ time }}</li>
+                                {% endfor %}
+                            </ul>
+                            <p class="small">Обязательные перерывы каждые 20–25 минут при работе с экраном.</p>
+                        </div>
+                        <div class="col-md-6">
+                            <p class="mb-1 small"><strong>3. Физическая активность:</strong></p>
+                            <p class="small mb-2">{{ base_recommendations.physical }}</p>
+                            <p class="mb-1 small"><strong>4. Питание:</strong></p>
+                            <ul class="small mb-2">
+                                {% for item in base_recommendations.nutrition %}<li>{{ item }}</li>{% endfor %}
+                            </ul>
+                            <p class="mb-1 small"><strong>5. Когнитивная стимуляция:</strong></p>
+                            <ul class="small mb-2">
+                                {% for item in base_recommendations.cognitive %}<li>{{ item }}</li>{% endfor %}
+                            </ul>
+                            <p class="mb-1 small"><strong>6. Эмоциональное благополучие:</strong></p>
+                            <ul class="small mb-0">
+                                {% for item in base_recommendations.emotional %}<li>{{ item }}</li>{% endfor %}
+                            </ul>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -284,7 +461,13 @@
             <div class="card mb-4">
                 <div class="card-header bg-light"><h5 class="mb-0">Добавить назначение</h5></div>
                 <div class="card-body">
-                    <form method="post">
+                    {% if auto_prescription_text %}
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" class="form-check-input" id="loadAutoPrescription">
+                        <label class="form-check-label" for="loadAutoPrescription">Подгрузить автоматическое назначение по данным диагностической панели</label>
+                    </div>
+                    {% endif %}
+                    <form method="post" id="prescriptionForm">
                         {% csrf_token %}
                         <input type="hidden" name="prescription" value="1">
                         <div class="mb-3"><label class="form-label">{{ prescription_form.prescription_type.label }}</label>{{ prescription_form.prescription_type }}</div>
@@ -341,6 +524,32 @@
 {{ block.super }}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    // Bootstrap tooltips для heatmap
+    document.querySelectorAll('.heatmap-cell[data-bs-toggle="tooltip"]').forEach(function(el) {
+        new bootstrap.Tooltip(el);
+    });
+
+    // Подгрузка автоматического назначения
+    const loadAutoPrescriptionChk = document.getElementById('loadAutoPrescription');
+    const prescriptionTextArea = document.getElementById('id_text');
+    const prescriptionTypeSelect = document.getElementById('id_prescription_type');
+    const autoPrescriptionText = {{ auto_prescription_json|safe }};
+    if (loadAutoPrescriptionChk && prescriptionTextArea && autoPrescriptionText) {
+        loadAutoPrescriptionChk.addEventListener('change', function() {
+            if (this.checked) {
+                prescriptionTextArea.value = autoPrescriptionText;
+                if (prescriptionTypeSelect) {
+                    const opts = prescriptionTypeSelect.options;
+                    for (let i = 0; i < opts.length; i++) {
+                        if (opts[i].value === 'recommendation') { prescriptionTypeSelect.selectedIndex = i; break; }
+                    }
+                }
+            } else {
+                prescriptionTextArea.value = '';
+            }
+        });
+    }
+
     const panelData = {{ panel_data_json|safe }};
     const heatmapData = {{ heatmap_data_json|safe }};
     const dynamicsData = {{ dynamics_data_json|safe }};
@@ -361,10 +570,31 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
+    const verticalLinePlugin = {
+        id: 'verticalLine',
+        afterDraw(chart) {
+            const val = parseFloat(chart.canvas.dataset.mfValue);
+            if (isNaN(val) || val < 0 || val > 1) return;
+            const { ctx, scales: { x, y } } = chart;
+            const xPos = x.getPixelForValue(val);
+            if (xPos < chart.chartArea.left || xPos > chart.chartArea.right) return;
+            ctx.save();
+            ctx.beginPath();
+            ctx.strokeStyle = 'rgba(200, 50, 50, 0.9)';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([4, 3]);
+            ctx.moveTo(xPos, chart.chartArea.top);
+            ctx.lineTo(xPos, chart.chartArea.bottom);
+            ctx.stroke();
+            ctx.restore();
+        }
+    };
+
     if (panelData && panelData.params_results) {
         for (const [paramId, pr] of Object.entries(panelData.params_results)) {
             const can = document.getElementById('mfChart-' + paramId);
             if (!can) continue;
+            can.dataset.mfValue = String(pr.value);
             const ctx = can.getContext('2d');
             const pts = panelData.mf_chart_data && panelData.mf_chart_data[paramId] ? panelData.mf_chart_data[paramId].points : {};
             const datasets = [];
@@ -396,7 +626,8 @@ document.addEventListener('DOMContentLoaded', function() {
                         x: { type: 'linear', min: 0, max: 1, title: { display: true, text: 'Значение' } },
                         y: { min: 0, max: 1.1, title: { display: true, text: 'μ' } }
                     }
-                }
+                },
+                plugins: [verticalLinePlugin]
             });
         }
     }

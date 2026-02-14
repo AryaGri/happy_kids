@@ -1,5 +1,6 @@
 from django.urls import path
 from . import views
+from . import api_views
 
 
 urlpatterns = [
@@ -39,6 +40,7 @@ urlpatterns = [
     path('parent/<int:user_id>/child/<int:child_id>/', views.parent_child_detail_view, name='parent_child_detail'),
     path('child/<int:child_id>/', views.child_detail_for_parent_view, name='child_detail'),
     path('child/<int:child_id>/prescriptions/download/', views.parent_download_prescriptions_view, name='parent_download_prescriptions'),
+    path('child/<int:child_id>/prescriptions/<int:prescription_id>/download/', views.parent_download_prescription_view, name='parent_download_prescription'),
 
     # Ребёнок / Игры
     path('game_dashboard/<int:user_id>/', views.game_dashboard_view, name='game_dashboard'),
@@ -55,6 +57,15 @@ urlpatterns = [
     path('game_dashboard/<int:user_id>/game_pattern/', views.game_pattern_view, name='game_pattern'),
     path('game_dashboard/<int:user_id>/game_emotion_match/', views.game_emotion_match_view, name='game_emotion_match'),
     path('game/painting/<int:user_id>/', views.game_painting_view, name='game_painting'),
+
+    # API для десктопного клиента (REST, токен-авторизация)
+    path('api/auth/login/', api_views.api_login, name='api_login'),
+    path('api/doctor/patients/', api_views.api_doctor_patients, name='api_doctor_patients'),
+    path('api/doctor/patients/add/', api_views.api_doctor_add_patient, name='api_doctor_add_patient'),
+    path('api/doctor/patient/<int:patient_id>/', api_views.api_doctor_patient_detail, name='api_doctor_patient_detail'),
+    path('api/doctor/patient/<int:patient_id>/prescription/', api_views.api_doctor_create_prescription, name='api_doctor_create_prescription'),
+    path('api/doctor/profile/', api_views.api_doctor_profile, name='api_doctor_profile'),
+    path('api/doctor/profile/update/', api_views.api_doctor_profile_update, name='api_doctor_profile_update'),
 
     # API для игр (POST)
     path('api/game/painting/<int:user_id>/save/', views.game_painting_save_view, name='api_game_painting_save'),

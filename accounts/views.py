@@ -559,12 +559,13 @@ def patient_detail_view(request, patient_id):
         get_dynamics_data,
         get_correlation_matrix,
         get_adaptive_recommendations,
+        build_auto_prescription_text,
         BASE_RECOMMENDATIONS,
         VARIABLE_DESCRIPTIONS,
     )
     panel_data = None
     adaptive_recs = []
-    heatmap_data = {'matrix': [], 'systems': [], 'indicators': [], 'rows': []}
+    heatmap_data = {'matrix': [], 'systems': [], 'indicators': [], 'rows': [], 'summary_interpretation': [], 'cell_interpretations': []}
     dynamics_data = None
     corr_data = {'matrix': [], 'labels': [], 'rows': []}
     if game_results:
@@ -580,7 +581,11 @@ def patient_detail_view(request, patient_id):
             corr_data = get_correlation_matrix(gr_list)
         except Exception:
             pass
-    
+
+    auto_prescription_text = ''
+    if panel_data and panel_data.get('params_results'):
+        auto_prescription_text = build_auto_prescription_text(panel_data['params_results'], BASE_RECOMMENDATIONS, patient)
+
     context = {
         'doctor': doctor,
         'patient': patient,
@@ -605,6 +610,8 @@ def patient_detail_view(request, patient_id):
         'adaptive_recommendations': adaptive_recs,
         'base_recommendations': BASE_RECOMMENDATIONS,
         'variable_descriptions': VARIABLE_DESCRIPTIONS,
+        'auto_prescription_text': auto_prescription_text,
+        'auto_prescription_json': json.dumps(auto_prescription_text, ensure_ascii=False),
     }
     
     return render(request, 'patient_detail.html', context)
@@ -803,8 +810,8 @@ def child_detail_for_parent_view(request, child_id):
         for k, v in emotion_scores.items()
     }
     
-    # Получаем назначения врача
-    prescriptions = Prescription.objects.filter(child=child, is_active=True).order_by('-date_created')
+    # Получаем назначения врача (с врачом для отображения)
+    prescriptions = Prescription.objects.filter(child=child, is_active=True).select_related('doctor').order_by('-date_created')
     
     # Получаем диагностический профиль (если есть)
     profile = DiagnosticProfile.objects.filter(child=child).first()
@@ -823,17 +830,17 @@ def child_detail_for_parent_view(request, child_id):
 
 
 def parent_download_prescriptions_view(request, child_id):
-    """Скачивание назначений врача для ребёнка (PDF) — только для родителя"""
+    """Скачивание всех назначений врача для ребёнка (PDF/TXT) — только для родителя"""
     parent_id = request.session.get('user_id')
     if request.session.get('user_role') != 'parent' or not parent_id:
         return HttpResponseForbidden('Доступ запрещён')
-    
+
     parent = get_object_or_404(CUsers, id=parent_id, role='parent')
     child = get_object_or_404(CUsers, id=child_id, role='child')
-    
+
     if not parent.children.filter(id=child.id).exists():
         return HttpResponseForbidden('Это не ваш ребёнок')
-    
+
     prescriptions = Prescription.objects.filter(child=child, is_active=True).order_by('-date_created')
     
     try:
@@ -933,6 +940,111 @@ def parent_download_prescriptions_view(request, child_id):
     response = HttpResponse(buffer.getvalue(), content_type='application/pdf')
     safe_name = ''.join(c if c.isalnum() or c in ' _-' else '_' for c in child.name)
     response['Content-Disposition'] = f'attachment; filename="naznacheniya_{safe_name}.pdf"'
+    return response
+
+
+def parent_download_prescription_view(request, child_id, prescription_id):
+    """Скачивание одной конкретной рекомендации (PDF/TXT) — только для родителя"""
+    parent_id = request.session.get('user_id')
+    if request.session.get('user_role') != 'parent' or not parent_id:
+        return HttpResponseForbidden('Доступ запрещён')
+
+    parent = get_object_or_404(CUsers, id=parent_id, role='parent')
+    child = get_object_or_404(CUsers, id=child_id, role='child')
+
+    if not parent.children.filter(id=child.id).exists():
+        return HttpResponseForbidden('Это не ваш ребёнок')
+
+    prescription = get_object_or_404(Prescription, id=prescription_id, child=child, is_active=True)
+    prescriptions = [prescription]
+
+    try:
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.units import cm
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.ttfonts import TTFont
+        from io import BytesIO
+    except ImportError:
+        from io import BytesIO
+        type_display = dict(Prescription._meta.get_field('prescription_type').choices).get(prescription.prescription_type, prescription.prescription_type)
+        lines = [
+            f'Назначение врача для {child.name}',
+            f'Дата рождения: {child.date_of_b.strftime("%d.%m.%Y")}',
+            '',
+            '=' * 50,
+            f'\n{type_display} — {prescription.date_created.strftime("%d.%m.%Y")}',
+            prescription.text,
+        ]
+        if prescription.medication_name:
+            lines.append(f'Препарат: {prescription.medication_name}')
+        if prescription.dosage:
+            lines.append(f'Дозировка: {prescription.dosage}')
+        if prescription.duration:
+            lines.append(f'Длительность: {prescription.duration}')
+        content = '\n'.join(lines).encode('utf-8')
+        response = HttpResponse(content, content_type='text/plain; charset=utf-8')
+        safe_name = ''.join(c if c.isalnum() or c in ' _-' else '_' for c in child.name)
+        date_str = prescription.date_created.strftime('%Y%m%d')
+        response['Content-Disposition'] = f'attachment; filename="naznachenie_{safe_name}_{date_str}.txt"'
+        return response
+
+    cyrillic_font = None
+    font_paths = [
+        os.path.join(os.environ.get('WINDIR', 'C:\\Windows'), 'Fonts', 'arial.ttf'),
+        os.path.join(os.environ.get('WINDIR', 'C:\\Windows'), 'Fonts', 'times.ttf'),
+        '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+        '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
+        '/usr/share/fonts/TTF/DejaVuSans.ttf',
+    ]
+    if hasattr(settings, 'BASE_DIR'):
+        font_paths.insert(0, os.path.join(str(settings.BASE_DIR), 'static', 'fonts', 'DejaVuSans.ttf'))
+    for fp in font_paths:
+        if fp and os.path.exists(fp):
+            try:
+                pdfmetrics.registerFont(TTFont('CyrillicFont', fp))
+                cyrillic_font = 'CyrillicFont'
+                break
+            except Exception:
+                continue
+
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=2*cm, leftMargin=2*cm, topMargin=2*cm, bottomMargin=2*cm)
+    base_styles = getSampleStyleSheet()
+    if cyrillic_font:
+        styles = {
+            'Title': ParagraphStyle('Title', parent=base_styles['Title'], fontName=cyrillic_font, fontSize=16),
+            'Normal': ParagraphStyle('Normal', parent=base_styles['Normal'], fontName=cyrillic_font, fontSize=11),
+            'Heading2': ParagraphStyle('Heading2', parent=base_styles['Heading2'], fontName=cyrillic_font, fontSize=12),
+        }
+    else:
+        styles = {'Title': base_styles['Title'], 'Normal': base_styles['Normal'], 'Heading2': base_styles['Heading2']}
+
+    story = []
+    story.append(Paragraph(f'Назначение врача для {child.name}', styles['Title']))
+    story.append(Paragraph(f'Дата рождения: {child.date_of_b.strftime("%d.%m.%Y")}', styles['Normal']))
+    story.append(Spacer(1, 0.5*cm))
+    type_map = dict(Prescription._meta.get_field('prescription_type').choices)
+    type_display = type_map.get(prescription.prescription_type, prescription.prescription_type)
+    story.append(Paragraph(f'<b>{type_display}</b> — {prescription.date_created.strftime("%d.%m.%Y")}', styles['Heading2']))
+    story.append(Paragraph(prescription.text.replace('\n', '<br/>'), styles['Normal']))
+    if prescription.medication_name or prescription.dosage or prescription.duration:
+        extra = []
+        if prescription.medication_name:
+            extra.append(f'Препарат: {prescription.medication_name}')
+        if prescription.dosage:
+            extra.append(f'Дозировка: {prescription.dosage}')
+        if prescription.duration:
+            extra.append(f'Длительность: {prescription.duration}')
+        story.append(Paragraph('<br/>'.join(extra), styles['Normal']))
+
+    doc.build(story)
+    buffer.seek(0)
+    response = HttpResponse(buffer.getvalue(), content_type='application/pdf')
+    safe_name = ''.join(c if c.isalnum() or c in ' _-' else '_' for c in child.name)
+    date_str = prescription.date_created.strftime('%Y%m%d')
+    response['Content-Disposition'] = f'attachment; filename="naznachenie_{safe_name}_{date_str}.pdf"'
     return response
 
 

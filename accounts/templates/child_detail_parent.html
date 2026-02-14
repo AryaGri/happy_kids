@@ -4,10 +4,6 @@
 {% block title %}Мой ребёнок — {{ child.name }}{% endblock %}
 
 {% block content %}
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
 <style>
     .child-detail-container { max-width: 900px; margin: 0 auto; padding: 20px; }
     .child-detail-container .container { height: auto !important; justify-content: flex-start !important; }
@@ -16,6 +12,8 @@
     .emotion-emoji { font-size: 1.5rem; }
     .game-badge { border-radius: 12px; padding: 6px 12px; font-size: 0.9rem; }
     .prescription-card { border-left: 4px solid #6f42c1; }
+    .prescription-card .accordion-header { overflow: visible; }
+    .prescription-card .accordion-button:not(.collapsed) { box-shadow: none; }
     .recommendation-box { background: linear-gradient(135deg, #e8f5e9 0%, #f1f8e9 100%); border-radius: 12px; padding: 1rem 1.25rem; }
     .chart-container { position: relative; height: 220px; }
 </style>
@@ -82,34 +80,44 @@
 
     <!-- 3. Назначения врача -->
     <div class="card friendly-card mb-4">
-        <div class="card-header bg-white text-dark py-3 d-flex justify-content-between align-items-center">
+        <div class="card-header bg-white text-dark py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
             <span><span class="emotion-emoji">📋</span> Рекомендации специалиста</span>
             {% if prescriptions %}
-            <a href="{% url 'parent_download_prescriptions' child.id %}" class="btn btn-sm btn-outline-primary" title="Скачать назначения">
-                <i class="fas fa-download me-1"></i>Скачать
+            <a href="{% url 'parent_download_prescriptions' child.id %}" class="btn btn-sm btn-outline-primary" title="Скачать все рекомендации">
+                <i class="fas fa-download me-1"></i>Скачать все
             </a>
             {% endif %}
         </div>
         <div class="card-body">
             {% if prescriptions %}
-            <div class="d-flex flex-column gap-3">
+            <div class="accordion" id="prescriptionsAccordion">
                 {% for prescription in prescriptions %}
-                <div class="prescription-card card bg-light">
-                    <div class="card-body py-3">
-                        <div class="d-flex justify-content-between align-items-start mb-2">
+                <div class="accordion-item border-0 mb-2 prescription-card">
+                    <h2 class="accordion-header d-flex align-items-stretch m-0" id="presc-head-{{ prescription.id }}">
+                        <button class="accordion-button collapsed bg-light py-2 px-3 flex-grow-1 border-0" type="button" data-bs-toggle="collapse" data-bs-target="#presc-body-{{ prescription.id }}" aria-expanded="false" aria-controls="presc-body-{{ prescription.id }}">
                             <span class="badge 
                                 {% if prescription.prescription_type == 'medication' %}bg-primary
                                 {% elif prescription.prescription_type == 'therapy' %}bg-info
                                 {% elif prescription.prescription_type == 'exercise' %}bg-success
-                                {% else %}bg-secondary{% endif %}">
+                                {% else %}bg-secondary{% endif %} me-2">
                                 {% if prescription.prescription_type == 'medication' %}💊 Лекарство
                                 {% elif prescription.prescription_type == 'therapy' %}🧘 Занятия
                                 {% elif prescription.prescription_type == 'exercise' %}🏃 Упражнения
                                 {% else %}📌 Рекомендация{% endif %}
                             </span>
-                            <small class="text-muted">{{ prescription.date_created|date:"d.m.Y" }}</small>
+                            <span class="text-muted small">{{ prescription.date_created|date:"d.m.Y H:i" }}</span>
+                            {% if prescription.doctor %}
+                            <span class="text-secondary small ms-2"><i class="fas fa-user-md me-1"></i>{{ prescription.doctor.name }}</span>
+                            {% endif %}
+                        </button>
+                        <a href="{% url 'parent_download_prescription' child.id prescription.id %}" class="d-flex align-items-center px-3 bg-light border-start text-secondary" title="Скачать">
+                            <i class="fas fa-download"></i>
+                        </a>
+                    </h2>
+                    <div id="presc-body-{{ prescription.id }}" class="accordion-collapse collapse" aria-labelledby="presc-head-{{ prescription.id }}">
+                        <div class="accordion-body py-3 bg-light border-top">
+                            <p class="mb-0">{{ prescription.text|linebreaks }}</p>
                         </div>
-                        <p class="mb-0">{{ prescription.text }}</p>
                     </div>
                 </div>
                 {% endfor %}

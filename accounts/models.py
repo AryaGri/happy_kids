@@ -500,3 +500,14 @@ class Subscription(models.Model):
     class Meta:
         verbose_name = 'Подписка'
         verbose_name_plural = 'Подписки'
+
+
+class ApiToken(models.Model):
+    """Токен для доступа к REST API (десктоп, мобильное приложение). Не влияет на веб-сессии."""
+    user = models.ForeignKey(CUsers, on_delete=models.CASCADE, related_name='api_tokens')
+    token = models.CharField(max_length=64, unique=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        verbose_name = 'API токен'
+        verbose_name_plural = 'API токены'
